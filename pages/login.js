@@ -7,20 +7,24 @@ export default function Login() {
   const router = useRouter();
 
   useEffect(() => {
-    // 認証状態が変わったらホームにリダイレクト
+    let isMounted = true;
+
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) {
+      if (user && isMounted) {
         router.push("/");
       }
     });
-    return () => unsubscribe();
+
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
   }, [router]);
 
   const loginWithGoogle = async () => {
     const provider = new GoogleAuthProvider();
     try {
       await signInWithPopup(auth, provider);
-      // 成功しても、onAuthStateChangedが処理する
     } catch (error) {
       if (error.code === "auth/operation-not-allowed") {
         alert("Googleログインが許可されていません。Firebaseの認証設定でGoogleログインを有効にしてください。");

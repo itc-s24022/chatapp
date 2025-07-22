@@ -1,9 +1,8 @@
 import { useEffect, useState, useRef } from "react";
-import { collection, addDoc, query, orderBy, where, onSnapshot, serverTimestamp ,limit} from "firebase/firestore";
+import { collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, limit } from "firebase/firestore";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { db, auth } from "../lib/firebase";
 import { useRouter } from "next/router";
-
 
 export default function ChatPage() {
     const [messages, setMessages] = useState([]);
@@ -12,22 +11,23 @@ export default function ChatPage() {
     const messagesEndRef = useRef(null);
     const router = useRouter();
 
-    // 認証チェック
+    // 認証状態チェック
     useEffect(() => {
-        const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
-            if (user) {
-                setUser(user);
+        const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+            if (currentUser) {
+                setUser(currentUser);
             } else {
                 router.push("/login");
             }
         });
         return () => unsubscribeAuth();
-    }, []);
+    }, [router]);
 
-    // 自分のログ付きメッセージを取得
+    // メッセージ取得(リアルタイム)
     useEffect(() => {
         if (!user) return;
 
+        // メッセージをtimestamp昇順で100件取得
         const q = query(
             collection(db, "messages"),
             orderBy("timestamp", "asc"),
@@ -35,42 +35,39 @@ export default function ChatPage() {
         );
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
-            const msgs = [];
-            snapshot.forEach((doc) => {
-                msgs.push(doc.data());
-            });
+            const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             setMessages(msgs);
             scrollToBottom();
         });
 
         return () => unsubscribe();
-    }, [user]); // ← userを依存に含めることで再ログインにも対応
+    }, [user]);
 
-
-    // メッセージ送信処理
+    // メッセージ送信
     const sendMessage = async () => {
         if (!input.trim() || !user) return;
 
         const messageData = {
             userId: user.uid,
             userName: user.displayName || "匿名",
-            message: input,
+            message: input.trim(),
             timestamp: serverTimestamp(),
         };
 
-        await addDoc(collection(db, "messages"), messageData);
-
-        // ログとしても保存
-        await addDoc(collection(db, "logs"), {
-            ...messageData,
-            action: "send_message",
-        });
-
-        setInput("");
-        scrollToBottom();
+        try {
+            await addDoc(collection(db, "messages"), messageData);
+            await addDoc(collection(db, "logs"), {
+                ...messageData,
+                action: "send_message",
+            });
+            setInput("");
+            scrollToBottom();
+        } catch (error) {
+            alert("送信エラー: " + error.message);
+        }
     };
 
-    // スクロール
+    // チャット画面最下部へスクロール
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     };
@@ -82,18 +79,22 @@ export default function ChatPage() {
     };
 
     return (
-        <div style={{ padding: "20px", maxWidth: "600px", margin: "0 auto" }}>
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
+        <div style={{ padding: 20, maxWidth: 600, margin: "0 auto" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <h2>Slack風チャット</h2>
                 {user && <button onClick={handleSignOut}>ログアウト</button>}
             </div>
 
             <div style={{
-                height: "400px", overflowY: "scroll", border: "1px solid #ccc",
-                padding: "10px", marginBottom: "10px", background: "#f9f9f9"
+                height: 400,
+                overflowY: "auto",
+                border: "1px solid #ccc",
+                padding: 10,
+                marginBottom: 10,
+                backgroundColor: "#f9f9f9",
             }}>
-                {messages.map((msg, i) => (
-                    <div key={i} style={{ marginBottom: "10px" }}>
+                {messages.map((msg) => (
+                    <div key={msg.id} style={{ marginBottom: 10 }}>
                         <strong>{msg.userName}</strong><br />
                         <span>{msg.message}</span>
                     </div>
@@ -111,10 +112,12 @@ export default function ChatPage() {
                     }
                 }}
                 rows={2}
-                style={{ width: "100%", marginBottom: "10px" }}
+                style={{ width: "100%", marginBottom: 10 }}
                 placeholder="メッセージを入力..."
             />
-            <button onClick={sendMessage} style={{ width: "100%" }}>送信</button>
+            <button onClick={sendMessage} style={{ width: "100%" }}>
+                送信
+            </button>
         </div>
     );
 }
