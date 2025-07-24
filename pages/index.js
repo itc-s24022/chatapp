@@ -1,5 +1,8 @@
 import { useEffect, useState, useRef } from "react";
-import { collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, limit } from "firebase/firestore";
+import {
+    collection, addDoc, query, orderBy, onSnapshot,
+    serverTimestamp, limit
+} from "firebase/firestore";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { db, auth } from "../lib/firebase";
 import { useRouter } from "next/router";
@@ -11,7 +14,7 @@ export default function ChatPage() {
     const messagesEndRef = useRef(null);
     const router = useRouter();
 
-    // 認証状態チェック
+    // 🔐 認証状態チェック
     useEffect(() => {
         const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
             if (currentUser) {
@@ -23,11 +26,10 @@ export default function ChatPage() {
         return () => unsubscribeAuth();
     }, [router]);
 
-    // メッセージ取得(リアルタイム)
+    // 💬 メッセージ取得(リアルタイム)
     useEffect(() => {
         if (!user) return;
 
-        // メッセージをtimestamp昇順で100件取得
         const q = query(
             collection(db, "messages"),
             orderBy("timestamp", "asc"),
@@ -43,7 +45,7 @@ export default function ChatPage() {
         return () => unsubscribe();
     }, [user]);
 
-    // メッセージ送信
+    // 📨 メッセージ送信処理
     const sendMessage = async () => {
         if (!input.trim() || !user) return;
 
@@ -67,12 +69,12 @@ export default function ChatPage() {
         }
     };
 
-    // チャット画面最下部へスクロール
+    // ⬇️ チャット画面最下部へスクロール
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     };
 
-    // サインアウト
+    // 🚪 ログアウト処理
     const handleSignOut = async () => {
         await signOut(auth);
         router.push("/login");
@@ -80,11 +82,32 @@ export default function ChatPage() {
 
     return (
         <div style={{ padding: 20, maxWidth: 600, margin: "0 auto" }}>
+
+            {/* 👤--- 変更点：ヘッダー左にプロフィールページ遷移ボタン追加 --- */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <h2>Slack風チャット</h2>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    {/* 👤 プロフィールページへの遷移ボタン */}
+                    <button
+                        onClick={() => router.push("/mypage")}  // ✅ 遷移先パス
+                        style={{
+                            background: "none",
+                            border: "none",
+                            fontSize: 24,
+                            cursor: "pointer"
+                        }}
+                        aria-label="プロフィールページへ"
+                    >
+                        👤
+                    </button>
+                    {/* アプリタイトル */}
+                    <h2>Slack風チャット</h2>
+                </div>
+
+                {/* ログアウトボタン（右側） */}
                 {user && <button onClick={handleSignOut}>ログアウト</button>}
             </div>
 
+            {/* チャットメッセージ一覧 */}
             <div style={{
                 height: 400,
                 overflowY: "auto",
@@ -102,6 +125,7 @@ export default function ChatPage() {
                 <div ref={messagesEndRef} />
             </div>
 
+            {/* メッセージ入力エリア */}
             <textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
@@ -115,6 +139,8 @@ export default function ChatPage() {
                 style={{ width: "100%", marginBottom: 10 }}
                 placeholder="メッセージを入力..."
             />
+
+            {/* 送信ボタン */}
             <button onClick={sendMessage} style={{ width: "100%" }}>
                 送信
             </button>
