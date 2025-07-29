@@ -9,6 +9,7 @@ import {
     createChannel,
     getServerChannels,
     sendMessage,
+    sendMessageWithImage,
     getChannelMessages,
     editMessage,
     deleteMessage,
@@ -20,13 +21,19 @@ import {
     getServerMembers,
     addMemberToServer,
     inviteUserToServer,
-    saveUserInfo
+    saveUserInfo,
+    getMemberPermissions,
+    hasPermission,
+    DEFAULT_PERMISSIONS,
+    getImage
 } from "../lib/firestore";
 import ServerSidebar from "../components/ServerSidebar";
 import ChannelSidebar from "../components/ChannelSidebar";
 import FriendsList from "../components/FriendsList";
 import MemberList from "../components/MemberList";
 import ServerInvites from "../components/ServerInvites";
+import RoleManager from "../components/RoleManager";
+import ImageUploader from "../components/ImageUploader";
 
 export default function ChatPage() {
     const [user, setUser] = useState(null);
@@ -41,7 +48,11 @@ export default function ChatPage() {
     const [dmChannels, setDmChannels] = useState([]);
     const [showMemberList, setShowMemberList] = useState(false);
     const [showInviteModal, setShowInviteModal] = useState(false);
+    const [showRoleManager, setShowRoleManager] = useState(false);
+    const [showImageUploader, setShowImageUploader] = useState(false);
     const [inviteEmail, setInviteEmail] = useState("");
+    const [userPermissions, setUserPermissions] = useState([]);
+    const [imageAttachment, setImageAttachment] = useState(null);
     const messagesEndRef = useRef(null);
     const router = useRouter();
 
@@ -141,28 +152,68 @@ export default function ChatPage() {
         return () => unsubscribe();
     }, [currentChannel]);
 
+    // ユーザー権限取得
+    useEffect(() => {
+        if (!user || !currentServer || currentServer.id === 'dm') return;
+
+        const fetchPermissions = async () => {
+            try {
+                const permissions = await getMemberPermissions(currentServer.id, user.uid);
+                setUserPermissions(permissions);
+            } catch (error) {
+                console.error('権限取得エラー:', error);
+                setUserPermissions([]);
+            }
+        };
+
+        fetchPermissions();
+    }, [user, currentServer]);
+
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     };
 
     const handleSendMessage = async () => {
-        if (!input.trim() || !user || !currentChannel) return;
+        if ((!input.trim() && !imageAttachment) || !user || !currentChannel) return;
+        
+        // 送信権限チェック
+        if (!hasPermission(userPermissions, DEFAULT_PERMISSIONS.SEND_MESSAGES)) {
+            alert('メッセージを送信する権限がありません');
+            return;
+        }
 
         if (editingMessage) {
             await editMessage(editingMessage.id, input.trim());
             setEditingMessage(null);
         } else {
-            await sendMessage(
-                currentChannel.id,
-                user.uid,
-                user.displayName || "匿名",
-                input.trim(),
-                replyingTo?.id
-            );
+            if (imageAttachment) {
+                await sendMessageWithImage(
+                    currentChannel.id,
+                    user.uid,
+                    user.displayName || "匿名",
+                    input.trim(),
+                    imageAttachment.id,
+                    replyingTo?.id
+                );
+            } else {
+                await sendMessage(
+                    currentChannel.id,
+                    user.uid,
+                    user.displayName || "匿名",
+                    input.trim(),
+                    replyingTo?.id
+                );
+            }
             setReplyingTo(null);
         }
 
         setInput("");
+        setImageAttachment(null);
+    };
+
+    const handleImageUpload = (uploadedImage) => {
+        setImageAttachment(uploadedImage);
+        setShowImageUploader(false);
     };
 
     const handleServerCreate = async (serverName) => {
@@ -327,6 +378,22 @@ export default function ChatPage() {
                                 >
                                     ➕ 招待
                                 </button>
+                                {hasPermission(userPermissions, DEFAULT_PERMISSIONS.MANAGE_ROLES) && (
+                                    <button
+                                        onClick={() => setShowRoleManager(true)}
+                                        style={{
+                                            backgroundColor: '#40444b',
+                                            color: '#dcddde',
+                                            border: 'none',
+                                            borderRadius: '4px',
+                                            padding: '6px 12px',
+                                            cursor: 'pointer',
+                                            fontSize: '14px'
+                                        }}
+                                    >
+                                        🎭 ロール
+                                    </button>
+                                )}
                             </div>
                         )}
                     </div>
@@ -470,6 +537,20 @@ export default function ChatPage() {
                                                     {msg.content}
                                                 </div>
                                                 
+                                                {/* 画像添付 */}
+                                                {msg.attachments && msg.attachments.length > 0 && (
+                                                    <div style={{ marginTop: '8px' }}>
+                                                        {msg.attachments.map((attachment, index) => (
+                                                            attachment.type === 'image' && (
+                                                                <ImageDisplay 
+                                                                    key={index}
+                                                                    imageId={attachment.id}
+                                                                />
+                                                            )
+                                                        ))}
+                                                    </div>
+                                                )}
+                                                
                                                 {/* リアクション */}
                                                 {msg.reactions && Object.keys(msg.reactions).length > 0 && (
                                                     <div style={{
@@ -610,6 +691,46 @@ export default function ChatPage() {
                                 </div>
                             )}
                             
+                            {/* 画像プレビュー */}
+                            {imageAttachment && (
+                                <div style={{
+                                    backgroundColor: '#2f3136',
+                                    padding: '8px 12px',
+                                    borderRadius: '4px',
+                                    marginBottom: '8px',
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center'
+                                }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <img
+                                            src={imageAttachment.url}
+                                            alt="添付画像"
+                                            style={{
+                                                width: '40px',
+                                                height: '40px',
+                                                objectFit: 'cover',
+                                                borderRadius: '4px'
+                                            }}
+                                        />
+                                        <span style={{ color: '#dcddde', fontSize: '14px' }}>
+                                            {imageAttachment.name}
+                                        </span>
+                                    </div>
+                                    <button
+                                        onClick={() => setImageAttachment(null)}
+                                        style={{
+                                            background: 'none',
+                                            border: 'none',
+                                            color: '#72767d',
+                                            cursor: 'pointer'
+                                        }}
+                                    >
+                                        ✕
+                                    </button>
+                                </div>
+                            )}
+                            
                             <div style={{
                                 backgroundColor: '#40444b',
                                 borderRadius: '8px',
@@ -643,17 +764,39 @@ export default function ChatPage() {
                                     }}
                                     rows={1}
                                 />
+                                
+                                {hasPermission(userPermissions, DEFAULT_PERMISSIONS.ATTACH_FILES) && (
+                                    <button
+                                        onClick={() => setShowImageUploader(true)}
+                                        style={{
+                                            backgroundColor: '#40444b',
+                                            color: '#dcddde',
+                                            border: 'none',
+                                            borderRadius: '4px',
+                                            width: '32px',
+                                            height: '32px',
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            fontSize: '16px'
+                                        }}
+                                    >
+                                        📎
+                                    </button>
+                                )}
+                                
                                 <button
                                     onClick={handleSendMessage}
-                                    disabled={!input.trim()}
+                                    disabled={!input.trim() && !imageAttachment}
                                     style={{
-                                        backgroundColor: input.trim() ? '#5865f2' : '#4f545c',
+                                        backgroundColor: (input.trim() || imageAttachment) ? '#5865f2' : '#4f545c',
                                         color: 'white',
                                         border: 'none',
                                         borderRadius: '4px',
                                         width: '32px',
                                         height: '32px',
-                                        cursor: input.trim() ? 'pointer' : 'not-allowed',
+                                        cursor: (input.trim() || imageAttachment) ? 'pointer' : 'not-allowed',
                                         display: 'flex',
                                         alignItems: 'center',
                                         justifyContent: 'center',
@@ -765,10 +908,144 @@ export default function ChatPage() {
                         </div>
                     </div>
                 )}
+                
+                {/* ロール管理モーダル */}
+                {showRoleManager && (
+                    <RoleManager
+                        server={currentServer}
+                        currentUser={user}
+                        onClose={() => setShowRoleManager(false)}
+                    />
+                )}
+                
+                {/* 画像アップロードモーダル */}
+                {showImageUploader && (
+                    <div style={{
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        backgroundColor: 'rgba(0, 0, 0, 0.85)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        zIndex: 1000
+                    }}>
+                        <div style={{
+                            backgroundColor: '#36393f',
+                            borderRadius: '8px',
+                            padding: '24px',
+                            width: '400px',
+                            maxWidth: '90vw'
+                        }}>
+                            <div style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                marginBottom: '20px'
+                            }}>
+                                <h2 style={{
+                                    color: '#ffffff',
+                                    fontSize: '20px',
+                                    fontWeight: '600',
+                                    margin: 0
+                                }}>
+                                    画像をアップロード
+                                </h2>
+                                <button
+                                    onClick={() => setShowImageUploader(false)}
+                                    style={{
+                                        background: 'none',
+                                        border: 'none',
+                                        color: '#b9bbbe',
+                                        cursor: 'pointer',
+                                        fontSize: '18px'
+                                    }}
+                                >
+                                    ✕
+                                </button>
+                            </div>
+                            
+                            <ImageUploader onImageUploaded={handleImageUpload} />
+                        </div>
+                    </div>
+                )}
             </div>
             
             {/* サーバー招待通知 */}
             <ServerInvites user={user} />
         </div>
+    );
+}
+
+// 画像表示コンポーネント
+function ImageDisplay({ imageId }) {
+    const [imageData, setImageData] = useState(null);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchImage = async () => {
+            try {
+                const data = await getImage(imageId);
+                setImageData(data);
+            } catch (error) {
+                console.error('画像取得エラー:', error);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        if (imageId) {
+            fetchImage();
+        }
+    }, [imageId]);
+
+    if (loading) {
+        return (
+            <div style={{
+                width: '200px',
+                height: '200px',
+                backgroundColor: '#2f3136',
+                borderRadius: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#72767d'
+            }}>
+                読み込み中...
+            </div>
+        );
+    }
+
+    if (!imageData) {
+        return (
+            <div style={{
+                width: '200px',
+                height: '200px',
+                backgroundColor: '#2f3136',
+                borderRadius: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#72767d'
+            }}>
+                画像を読み込めませんでした
+            </div>
+        );
+    }
+
+    return (
+        <img
+            src={imageData.data}
+            alt={imageData.name}
+            style={{
+                maxWidth: '400px',
+                maxHeight: '300px',
+                borderRadius: '8px',
+                cursor: 'pointer'
+            }}
+            onClick={() => window.open(imageData.data, '_blank')}
+        />
     );
 }
