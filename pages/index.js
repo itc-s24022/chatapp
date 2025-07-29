@@ -24,7 +24,9 @@ import {
     getMemberPermissions,
     hasPermission,
     DEFAULT_PERMISSIONS,
-    getImage
+    getImage,
+    deleteServer,
+    updateServerIcon
 } from "../lib/firestore";
 import ServerSidebar from "../components/ServerSidebar";
 import ChannelSidebar from "../components/ChannelSidebar";
@@ -52,6 +54,7 @@ export default function ChatPage() {
     const [inviteEmail, setInviteEmail] = useState("");
     const [userPermissions, setUserPermissions] = useState([]);
     const [imageAttachment, setImageAttachment] = useState(null);
+    const [hoveredMessage, setHoveredMessage] = useState(null);
     const messagesEndRef = useRef(null);
     const router = useRouter();
 
@@ -617,7 +620,7 @@ export default function ChatPage() {
                                                     {msg.attachments && msg.attachments.map((attachment, idx) => (
                                                         <div key={idx} style={{ marginBottom: '8px' }}>
                                                             {attachment.type === 'image' && (
-                                                                <AttachmentImage attachmentId={attachment.id} />
+                                                                <ImageDisplay imageId={attachment.id} />
                                                             )}
                                                         </div>
                                                     ))}
