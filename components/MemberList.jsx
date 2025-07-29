@@ -1,6 +1,6 @@
 
 import { useState, useEffect } from 'react';
-import { getServerMembers, updateMemberRole, removeMemberFromServer } from '../lib/firestore';
+import { getServerMembers, updateMemberRoles, removeMemberFromServer } from '../lib/firestore';
 import UserProfile from './UserProfile';
 
 export default function MemberList({ server, currentUser, onClose }) {
@@ -24,7 +24,7 @@ export default function MemberList({ server, currentUser, onClose }) {
     }, [server?.id]);
 
     const handleRoleChange = async (memberId, newRole) => {
-        await updateMemberRole(server.id, memberId, newRole);
+        await updateMemberRoles(server.id, memberId, [newRole]);
     };
 
     const handleRemoveMember = async (memberId) => {
