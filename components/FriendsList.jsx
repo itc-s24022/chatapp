@@ -1,20 +1,34 @@
-
 import { useState, useEffect } from 'react';
-import { getUserFriends, getFriendRequests, acceptFriendRequest, declineFriendRequest } from '../lib/firestore';
+import { 
+    sendFriendRequest, 
+    getFriendRequests, 
+    acceptFriendRequest, 
+    declineFriendRequest, 
+    getUserFriends,
+    searchUserByEmail,
+    createDMChannel 
+} from '../lib/firestore';
 
 export default function FriendsList({ user }) {
     const [friends, setFriends] = useState([]);
     const [friendRequests, setFriendRequests] = useState([]);
+    const [searchQuery, setSearchQuery] = useState('');
     const [activeTab, setActiveTab] = useState('friends');
+    const [searchResults, setSearchResults] = useState([]);
+    const [loading, setLoading] = useState(false);
 
     useEffect(() => {
         if (!user) return;
 
         const unsubscribeFriends = getUserFriends(user.uid, (snapshot) => {
-            const friendList = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            }));
+            const friendList = snapshot.docs.map(doc => {
+                const data = doc.data();
+                return {
+                    id: doc.id,
+                    ...data,
+                    friendId: data.user1 === user.uid ? data.user2 : data.user1
+                };
+            });
             setFriends(friendList);
         });
 
@@ -32,12 +46,65 @@ export default function FriendsList({ user }) {
         };
     }, [user]);
 
+    const handleSearch = async () => {
+        if (!searchQuery.trim()) return;
+
+        setLoading(true);
+        try {
+            const results = await searchUserByEmail(searchQuery.trim());
+            setSearchResults(results.filter(result => result.uid !== user.uid));
+        } catch (error) {
+            console.error('検索エラー:', error);
+            alert('ユーザー検索に失敗しました');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleSendFriendRequest = async (targetUser) => {
+        try {
+            await sendFriendRequest(
+                user.uid,
+                user.displayName || '匿名',
+                targetUser.uid || targetUser.id,
+                targetUser.displayName || '匿名'
+            );
+            alert('フレンド申請を送信しました');
+            setSearchResults([]);
+            setSearchQuery('');
+        } catch (error) {
+            console.error('フレンド申請エラー:', error);
+            alert('フレンド申請に失敗しました');
+        }
+    };
+
     const handleAcceptRequest = async (requestId, fromUserId) => {
-        await acceptFriendRequest(requestId, fromUserId, user.uid);
+        try {
+            await acceptFriendRequest(requestId, fromUserId, user.uid);
+        } catch (error) {
+            console.error('フレンド申請受諾エラー:', error);
+            alert('フレンド申請の受諾に失敗しました');
+        }
     };
 
     const handleDeclineRequest = async (requestId) => {
-        await declineFriendRequest(requestId);
+        try {
+            await declineFriendRequest(requestId);
+        } catch (error) {
+            console.error('フレンド申請拒否エラー:', error);
+            alert('フレンド申請の拒否に失敗しました');
+        }
+    };
+
+    const handleStartDM = async (friendId) => {
+        try {
+            await createDMChannel(user.uid, friendId);
+            // DMチャンネルが作成されたことを通知
+            alert('DMチャンネルを作成しました');
+        } catch (error) {
+            console.error('DM作成エラー:', error);
+            alert('DM作成に失敗しました');
+        }
     };
 
     return (
@@ -60,7 +127,7 @@ export default function FriendsList({ user }) {
                 }}>
                     フレンド
                 </h2>
-                
+
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                     <button
                         onClick={() => setActiveTab('friends')}
@@ -108,6 +175,81 @@ export default function FriendsList({ user }) {
                 </div>
             </div>
 
+            <div style={{ padding: '0 16px' }}>
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                    <input
+                        type="text"
+                        placeholder="メールアドレスで検索"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        style={{
+                            backgroundColor: '#202225',
+                            color: '#b9bbbe',
+                            border: 'none',
+                            borderRadius: '4px',
+                            padding: '8px 12px',
+                            fontSize: '14px',
+                            flex: 1
+                        }}
+                    />
+                    <button
+                        onClick={handleSearch}
+                        disabled={loading}
+                        style={{
+                            backgroundColor: '#5865f2',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '4px',
+                            padding: '8px 12px',
+                            cursor: 'pointer',
+                            fontSize: '14px',
+                            whiteSpace: 'nowrap'
+                        }}
+                    >
+                        {loading ? '検索中...' : '検索'}
+                    </button>
+                </div>
+
+                {searchResults.length > 0 && (
+                    <div style={{ marginBottom: '16px' }}>
+                        {searchResults.map(result => (
+                            <div key={result.uid} style={{
+                                backgroundColor: '#40444b',
+                                borderRadius: '4px',
+                                padding: '12px',
+                                marginBottom: '8px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between'
+                            }}>
+                                <div>
+                                    <div style={{ color: '#ffffff', fontSize: '14px', fontWeight: '500' }}>
+                                        {result.displayName || "匿名"}
+                                    </div>
+                                    <div style={{ color: '#b9bbbe', fontSize: '12px' }}>
+                                        {result.email}
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => handleSendFriendRequest(result)}
+                                    style={{
+                                        backgroundColor: '#3ba55c',
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: '4px',
+                                        padding: '6px 12px',
+                                        cursor: 'pointer',
+                                        fontSize: '12px'
+                                    }}
+                                >
+                                    フレンド申請
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+
             <div style={{ flex: 1, overflowY: 'auto', padding: '16px' }}>
                 {activeTab === 'friends' ? (
                     <div>
@@ -124,39 +266,57 @@ export default function FriendsList({ user }) {
                                     padding: '8px',
                                     borderRadius: '4px',
                                     cursor: 'pointer',
-                                    marginBottom: '4px'
+                                    marginBottom: '4px',
+                                    justifyContent: 'space-between'
                                 }}
                                 onMouseOver={(e) => e.target.style.backgroundColor = '#40444b'}
                                 onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}>
-                                    <div style={{
-                                        width: '32px',
-                                        height: '32px',
-                                        borderRadius: '50%',
-                                        backgroundColor: '#5865f2',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        fontSize: '14px',
-                                        fontWeight: '600',
-                                        color: 'white'
-                                    }}>
-                                        {(friend.displayName || "匿").charAt(0).toUpperCase()}
-                                    </div>
-                                    <div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                                         <div style={{
-                                            color: '#ffffff',
+                                            width: '32px',
+                                            height: '32px',
+                                            borderRadius: '50%',
+                                            backgroundColor: '#5865f2',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
                                             fontSize: '14px',
-                                            fontWeight: '500'
+                                            fontWeight: '600',
+                                            color: 'white'
                                         }}>
-                                            {friend.displayName || "匿名"}
+                                            {(friend.displayName || "匿").charAt(0).toUpperCase()}
                                         </div>
-                                        <div style={{
-                                            color: '#43b581',
-                                            fontSize: '12px'
-                                        }}>
-                                            オンライン
+                                        <div>
+                                            <div style={{
+                                                color: '#ffffff',
+                                                fontSize: '14px',
+                                                fontWeight: '500'
+                                            }}>
+                                                {friend.displayName || "匿名"}
+                                            </div>
+                                            <div style={{
+                                                color: '#43b581',
+                                                fontSize: '12px'
+                                            }}>
+                                                オンライン
+                                            </div>
                                         </div>
                                     </div>
+                                    <button
+                                        onClick={() => handleStartDM(friend.friendId)}
+                                        style={{
+                                            backgroundColor: '#5865f2',
+                                            color: 'white',
+                                            border: 'none',
+                                            borderRadius: '4px',
+                                            padding: '6px 12px',
+                                            cursor: 'pointer',
+                                            fontSize: '12px',
+                                            whiteSpace: 'nowrap'
+                                        }}
+                                    >
+                                        DM
+                                    </button>
                                 </div>
                             ))
                         )}

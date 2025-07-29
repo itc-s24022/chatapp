@@ -1,33 +1,72 @@
-
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { uploadImage } from '../lib/firestore';
 
-export default function ImageUploader({ onImageUploaded, accept = "image/*", maxSize = 5 * 1024 * 1024 }) {
+export default function ImageUploader({ onImageUploaded, folder = 'images', multiple = false }) {
     const [uploading, setUploading] = useState(false);
     const [dragOver, setDragOver] = useState(false);
+    const [preview, setPreview] = useState(null);
+    const fileInputRef = useRef(null);
 
-    const handleFileSelect = async (file) => {
-        if (!file) return;
-        
-        // ファイルサイズチェック
-        if (file.size > maxSize) {
-            alert(`ファイルサイズが大きすぎます。${Math.round(maxSize / 1024 / 1024)}MB以下にしてください。`);
-            return;
+    const validateFile = (file) => {
+        // ファイルサイズチェック (10MB制限)
+        if (file.size > 10 * 1024 * 1024) {
+            alert('ファイルサイズは10MB以下にしてください');
+            return false;
         }
-        
+
         // ファイルタイプチェック
-        if (!file.type.startsWith('image/')) {
-            alert('画像ファイルのみアップロード可能です。');
-            return;
+        const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+        if (!allowedTypes.includes(file.type)) {
+            alert('JPEG、PNG、GIF、WebP形式の画像のみアップロード可能です');
+            return false;
         }
-        
+
+        return true;
+    };
+
+    const createPreview = (file) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            setPreview(e.target.result);
+        };
+        reader.readAsDataURL(file);
+    };
+
+    const handleFileUpload = async (file) => {
+        if (!file || !validateFile(file)) return;
+
+        createPreview(file);
         setUploading(true);
+
         try {
-            const uploadedImage = await uploadImage(file);
+            const uploadedImage = await uploadImage(file, folder);
             onImageUploaded(uploadedImage);
         } catch (error) {
-            console.error('画像アップロードエラー:', error);
-            alert('画像のアップロードに失敗しました。');
+            console.error('アップロードエラー:', error);
+            alert('画像のアップロードに失敗しました');
+        } finally {
+            setUploading(false);
+            setPreview(null);
+        }
+    };
+
+    const handleMultipleFiles = async (files) => {
+        if (!multiple) {
+            handleFileUpload(files[0]);
+            return;
+        }
+
+        const validFiles = Array.from(files).filter(validateFile);
+        if (validFiles.length === 0) return;
+
+        setUploading(true);
+        try {
+            const uploadPromises = validFiles.map(file => uploadImage(file, folder));
+            const uploadedImages = await Promise.all(uploadPromises);
+            uploadedImages.forEach(image => onImageUploaded(image));
+        } catch (error) {
+            console.error('アップロードエラー:', error);
+            alert('画像のアップロードに失敗しました');
         } finally {
             setUploading(false);
         }
@@ -36,10 +75,14 @@ export default function ImageUploader({ onImageUploaded, accept = "image/*", max
     const handleDrop = (e) => {
         e.preventDefault();
         setDragOver(false);
-        
+
         const files = Array.from(e.dataTransfer.files);
         if (files.length > 0) {
-            handleFileSelect(files[0]);
+            if (multiple) {
+                handleMultipleFiles(files);
+            } else {
+                handleFileUpload(files[0]);
+            }
         }
     };
 
@@ -48,27 +91,39 @@ export default function ImageUploader({ onImageUploaded, accept = "image/*", max
         setDragOver(true);
     };
 
-    const handleDragLeave = (e) => {
-        e.preventDefault();
+    const handleDragLeave = () => {
         setDragOver(false);
+    };
+
+    const handleFileInputChange = (e) => {
+        const files = e.target.files;
+        if (files && files.length > 0) {
+            if (multiple) {
+                handleMultipleFiles(files);
+            } else {
+                handleFileUpload(files[0]);
+            }
+        }
     };
 
     return (
         <div>
             <input
                 type="file"
-                accept={accept}
-                onChange={(e) => handleFileSelect(e.target.files[0])}
+                accept="image/jpeg, image/png, image/gif, image/webp"
+                onChange={handleFileInputChange}
                 style={{ display: 'none' }}
                 id="image-upload"
                 disabled={uploading}
+                multiple={multiple}
+                ref={fileInputRef}
             />
-            
+
             <div
                 onDrop={handleDrop}
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
-                onClick={() => !uploading && document.getElementById('image-upload').click()}
+                onClick={() => !uploading && fileInputRef.current.click()}
                 style={{
                     border: `2px dashed ${dragOver ? '#5865f2' : '#40444b'}`,
                     borderRadius: '8px',
@@ -85,12 +140,14 @@ export default function ImageUploader({ onImageUploaded, accept = "image/*", max
                         <div style={{ fontSize: '20px', marginBottom: '8px' }}>⏳</div>
                         <div>アップロード中...</div>
                     </div>
+                ) : preview ? (
+                    <img src={preview} alt="プレビュー" style={{ maxWidth: '100%', maxHeight: '200px' }} />
                 ) : (
                     <div>
                         <div style={{ fontSize: '20px', marginBottom: '8px' }}>📷</div>
                         <div>クリックまたはドラッグ&ドロップで画像をアップロード</div>
                         <div style={{ fontSize: '12px', color: '#72767d', marginTop: '4px' }}>
-                            最大 {Math.round(maxSize / 1024 / 1024)}MB
+                            最大 10MB / {multiple ? '複数ファイル可' : '1ファイルのみ'}
                         </div>
                     </div>
                 )}
