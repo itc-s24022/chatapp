@@ -18,12 +18,15 @@ import {
     createDMChannel,
     sendFriendRequest,
     getServerMembers,
-    addMemberToServer
+    addMemberToServer,
+    inviteUserToServer,
+    saveUserInfo
 } from "../lib/firestore";
 import ServerSidebar from "../components/ServerSidebar";
 import ChannelSidebar from "../components/ChannelSidebar";
 import FriendsList from "../components/FriendsList";
 import MemberList from "../components/MemberList";
+import ServerInvites from "../components/ServerInvites";
 
 export default function ChatPage() {
     const [user, setUser] = useState(null);
@@ -44,9 +47,19 @@ export default function ChatPage() {
 
     // 認証状態チェック
     useEffect(() => {
-        const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+        const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
             if (currentUser) {
                 setUser(currentUser);
+                // ユーザー情報をFirestoreに保存
+                try {
+                    await saveUserInfo(currentUser.uid, {
+                        displayName: currentUser.displayName || '匿名',
+                        email: currentUser.email,
+                        photoURL: currentUser.photoURL
+                    });
+                } catch (error) {
+                    console.error('ユーザー情報保存エラー:', error);
+                }
             } else {
                 router.push("/login");
             }
@@ -115,7 +128,12 @@ export default function ChatPage() {
             const messageList = snapshot.docs.map(doc => ({
                 id: doc.id,
                 ...doc.data()
-            }));
+            })).sort((a, b) => {
+                if (!a.timestamp || !b.timestamp) return 0;
+                const timeA = a.timestamp.seconds || 0;
+                const timeB = b.timestamp.seconds || 0;
+                return timeA - timeB;
+            });
             setMessages(messageList);
             scrollToBottom();
         });
@@ -179,13 +197,17 @@ export default function ChatPage() {
         if (!inviteEmail.trim() || !currentServer) return;
         
         try {
-            // ここでユーザー検索とサーバー招待の処理
-            alert('招待機能は開発中です');
+            await inviteUserToServer(
+                currentServer.id, 
+                inviteEmail.trim(), 
+                user.displayName || '匿名'
+            );
+            alert('招待を送信しました');
             setInviteEmail('');
             setShowInviteModal(false);
         } catch (error) {
             console.error('招待エラー:', error);
-            alert('招待に失敗しました');
+            alert(error.message || '招待に失敗しました');
         }
     };
 
@@ -744,6 +766,9 @@ export default function ChatPage() {
                     </div>
                 )}
             </div>
+            
+            {/* サーバー招待通知 */}
+            <ServerInvites user={user} />
         </div>
     );
 }
