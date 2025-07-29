@@ -20,7 +20,8 @@ export default function ServerSidebar({ servers, currentServer, onServerSelect, 
             flexDirection: 'column',
             alignItems: 'center',
             padding: '12px 0',
-            gap: '8px'
+            gap: '8px',
+            position: 'relative'
         }}>
             {/* ダイレクトメッセージ */}
             <div style={{
@@ -49,7 +50,7 @@ export default function ServerSidebar({ servers, currentServer, onServerSelect, 
                     e.target.style.backgroundColor = '#36393f';
                 }
             }}>
-                📱
+                💬
             </div>
 
             {/* 区切り線 */}
@@ -75,7 +76,8 @@ export default function ServerSidebar({ servers, currentServer, onServerSelect, 
                     transition: 'all 0.15s ease',
                     color: 'white',
                     fontSize: '16px',
-                    fontWeight: '600'
+                    fontWeight: '600',
+                    position: 'relative'
                 }}
                 onClick={() => onServerSelect(server.id)}
                 onMouseOver={(e) => {
@@ -89,8 +91,23 @@ export default function ServerSidebar({ servers, currentServer, onServerSelect, 
                         e.target.style.borderRadius = '24px';
                         e.target.style.backgroundColor = '#36393f';
                     }
-                }}>
+                }}
+                title={server.name}>
                     {server.name.charAt(0).toUpperCase()}
+                    
+                    {/* アクティブインジケーター */}
+                    {currentServer === server.id && (
+                        <div style={{
+                            position: 'absolute',
+                            left: '-8px',
+                            top: '50%',
+                            transform: 'translateY(-50%)',
+                            width: '4px',
+                            height: '40px',
+                            backgroundColor: '#ffffff',
+                            borderRadius: '0 2px 2px 0'
+                        }} />
+                    )}
                 </div>
             ))}
 
@@ -105,19 +122,19 @@ export default function ServerSidebar({ servers, currentServer, onServerSelect, 
                 justifyContent: 'center',
                 cursor: 'pointer',
                 transition: 'all 0.15s ease',
-                color: '#3ba55c',
+                color: '#43b581',
                 fontSize: '24px'
             }}
             onClick={() => setShowCreateModal(true)}
             onMouseOver={(e) => {
                 e.target.style.borderRadius = '16px';
-                e.target.style.backgroundColor = '#3ba55c';
+                e.target.style.backgroundColor = '#43b581';
                 e.target.style.color = 'white';
             }}
             onMouseOut={(e) => {
                 e.target.style.borderRadius = '24px';
                 e.target.style.backgroundColor = '#36393f';
-                e.target.style.color = '#3ba55c';
+                e.target.style.color = '#43b581';
             }}>
                 +
             </div>
@@ -130,7 +147,7 @@ export default function ServerSidebar({ servers, currentServer, onServerSelect, 
                     left: 0,
                     right: 0,
                     bottom: 0,
-                    backgroundColor: 'rgba(0,0,0,0.85)',
+                    backgroundColor: 'rgba(0, 0, 0, 0.85)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -138,74 +155,77 @@ export default function ServerSidebar({ servers, currentServer, onServerSelect, 
                 }}>
                     <div style={{
                         backgroundColor: '#36393f',
-                        padding: '32px',
                         borderRadius: '8px',
+                        padding: '24px',
                         width: '440px',
                         maxWidth: '90vw'
                     }}>
                         <h2 style={{
-                            color: 'white',
+                            color: '#ffffff',
                             fontSize: '24px',
                             fontWeight: '600',
-                            margin: '0 0 8px 0',
-                            textAlign: 'center'
+                            margin: '0 0 8px 0'
                         }}>
                             サーバーを作成
                         </h2>
                         <p style={{
                             color: '#b9bbbe',
                             fontSize: '16px',
-                            textAlign: 'center',
-                            margin: '0 0 24px 0'
+                            margin: '0 0 20px 0'
                         }}>
-                            あなたのサーバーは、あなたとお友達がたむろする場所です。作って、話し始めましょう。
+                            サーバーとは、友達と集まるスペースです。自分のサーバーを作って、話し始めましょう。
                         </p>
-
-                        <label style={{
-                            display: 'block',
-                            color: '#b9bbbe',
-                            fontSize: '12px',
-                            fontWeight: '600',
-                            textTransform: 'uppercase',
-                            marginBottom: '8px',
-                            letterSpacing: '0.02em'
-                        }}>
-                            サーバー名
-                        </label>
-                        <input
-                            type="text"
-                            value={serverName}
-                            onChange={(e) => setServerName(e.target.value)}
-                            placeholder="サーバー名を入力"
-                            style={{
-                                width: '100%',
-                                backgroundColor: '#202225',
-                                border: 'none',
-                                borderRadius: '4px',
-                                padding: '12px',
-                                color: '#dcddde',
-                                fontSize: '16px',
-                                outline: 'none',
-                                boxSizing: 'border-box',
-                                marginBottom: '24px'
-                            }}
-                            onKeyPress={(e) => {
-                                if (e.key === 'Enter') handleCreateServer();
-                            }}
-                        />
-
+                        
+                        <div style={{ marginBottom: '20px' }}>
+                            <label style={{
+                                color: '#b9bbbe',
+                                fontSize: '12px',
+                                fontWeight: '600',
+                                textTransform: 'uppercase',
+                                display: 'block',
+                                marginBottom: '8px'
+                            }}>
+                                サーバー名
+                            </label>
+                            <input
+                                type="text"
+                                value={serverName}
+                                onChange={(e) => setServerName(e.target.value)}
+                                placeholder="サーバー名を入力"
+                                style={{
+                                    width: '100%',
+                                    padding: '10px',
+                                    backgroundColor: '#202225',
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    color: '#dcddde',
+                                    fontSize: '16px',
+                                    outline: 'none'
+                                }}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                        handleCreateServer();
+                                    }
+                                }}
+                                autoFocus
+                            />
+                        </div>
+                        
                         <div style={{
                             display: 'flex',
-                            gap: '12px',
-                            justifyContent: 'flex-end'
+                            justifyContent: 'flex-end',
+                            gap: '12px'
                         }}>
                             <button
-                                onClick={() => setShowCreateModal(false)}
+                                onClick={() => {
+                                    setShowCreateModal(false);
+                                    setServerName('');
+                                }}
                                 style={{
-                                    padding: '12px 16px',
                                     backgroundColor: 'transparent',
-                                    color: '#b9bbbe',
                                     border: 'none',
+                                    color: '#ffffff',
+                                    padding: '12px 16px',
                                     borderRadius: '4px',
                                     cursor: 'pointer',
                                     fontSize: '14px',
@@ -218,10 +238,10 @@ export default function ServerSidebar({ servers, currentServer, onServerSelect, 
                                 onClick={handleCreateServer}
                                 disabled={!serverName.trim()}
                                 style={{
-                                    padding: '12px 16px',
                                     backgroundColor: serverName.trim() ? '#5865f2' : '#4f545c',
-                                    color: 'white',
                                     border: 'none',
+                                    color: 'white',
+                                    padding: '12px 16px',
                                     borderRadius: '4px',
                                     cursor: serverName.trim() ? 'pointer' : 'not-allowed',
                                     fontSize: '14px',

@@ -1,21 +1,40 @@
 
 import { useEffect, useState, useRef } from "react";
-import {
-    collection, addDoc, query, orderBy, onSnapshot,
-    serverTimestamp, limit
-} from "firebase/firestore";
 import { onAuthStateChanged, signOut } from "firebase/auth";
-import { db, auth } from "../lib/firebase";
+import { auth } from "../lib/firebase";
 import { useRouter } from "next/router";
+import {
+    createServer,
+    getUserServers,
+    createChannel,
+    getServerChannels,
+    sendMessage,
+    getChannelMessages,
+    editMessage,
+    deleteMessage,
+    addReaction,
+    removeReaction,
+    getUserDMs,
+    createDMChannel
+} from "../lib/firestore";
+import ServerSidebar from "../components/ServerSidebar";
+import ChannelSidebar from "../components/ChannelSidebar";
 
 export default function ChatPage() {
+    const [user, setUser] = useState(null);
+    const [servers, setServers] = useState([]);
+    const [currentServer, setCurrentServer] = useState(null);
+    const [channels, setChannels] = useState([]);
+    const [currentChannel, setCurrentChannel] = useState(null);
     const [messages, setMessages] = useState([]);
     const [input, setInput] = useState("");
-    const [user, setUser] = useState(null);
+    const [editingMessage, setEditingMessage] = useState(null);
+    const [replyingTo, setReplyingTo] = useState(null);
+    const [dmChannels, setDmChannels] = useState([]);
     const messagesEndRef = useRef(null);
     const router = useRouter();
 
-    // 🔐 認証状態チェック
+    // 認証状態チェック
     useEffect(() => {
         const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
             if (currentUser) {
@@ -27,306 +46,547 @@ export default function ChatPage() {
         return () => unsubscribeAuth();
     }, [router]);
 
-    // 💬 メッセージ取得(リアルタイム)
+    // ユーザーのサーバー取得
     useEffect(() => {
         if (!user) return;
 
-        const q = query(
-            collection(db, "messages"),
-            orderBy("timestamp", "asc"),
-            limit(100)
-        );
-
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setMessages(msgs);
-            scrollToBottom();
+        const unsubscribe = getUserServers(user.uid, (snapshot) => {
+            const serverList = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+            }));
+            setServers(serverList);
+            
+            if (serverList.length > 0 && !currentServer) {
+                setCurrentServer(serverList[0]);
+            }
         });
 
         return () => unsubscribe();
     }, [user]);
 
-    // 📨 メッセージ送信処理
-    const sendMessage = async () => {
-        if (!input.trim() || !user) return;
+    // DM取得
+    useEffect(() => {
+        if (!user) return;
 
-        const messageData = {
-            userId: user.uid,
-            userName: user.displayName || "匿名",
-            message: input.trim(),
-            timestamp: serverTimestamp(),
-        };
+        const unsubscribe = getUserDMs(user.uid, (snapshot) => {
+            const dmList = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+            }));
+            setDmChannels(dmList);
+        });
 
-        try {
-            await addDoc(collection(db, "messages"), messageData);
-            await addDoc(collection(db, "logs"), {
-                ...messageData,
-                action: "send_message",
-            });
-            setInput("");
+        return () => unsubscribe();
+    }, [user]);
+
+    // サーバーのチャンネル取得
+    useEffect(() => {
+        if (!currentServer) return;
+
+        const unsubscribe = getServerChannels(currentServer.id, (snapshot) => {
+            const channelList = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+            }));
+            setChannels(channelList);
+            
+            if (channelList.length > 0 && !currentChannel) {
+                setCurrentChannel(channelList[0]);
+            }
+        });
+
+        return () => unsubscribe();
+    }, [currentServer]);
+
+    // チャンネルのメッセージ取得
+    useEffect(() => {
+        if (!currentChannel) return;
+
+        const unsubscribe = getChannelMessages(currentChannel.id, (snapshot) => {
+            const messageList = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+            }));
+            setMessages(messageList);
             scrollToBottom();
-        } catch (error) {
-            alert("送信エラー: " + error.message);
-        }
-    };
+        });
 
-    // ⬇️ チャット画面最下部へスクロール
+        return () => unsubscribe();
+    }, [currentChannel]);
+
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     };
 
-    // 🚪 ログアウト処理
+    const handleSendMessage = async () => {
+        if (!input.trim() || !user || !currentChannel) return;
+
+        if (editingMessage) {
+            await editMessage(editingMessage.id, input.trim());
+            setEditingMessage(null);
+        } else {
+            await sendMessage(
+                currentChannel.id,
+                user.uid,
+                user.displayName || "匿名",
+                input.trim(),
+                replyingTo?.id
+            );
+            setReplyingTo(null);
+        }
+
+        setInput("");
+    };
+
+    const handleServerCreate = async (serverName) => {
+        if (!user) return;
+        await createServer(serverName, user.uid);
+    };
+
+    const handleChannelCreate = async (channelData) => {
+        if (!user || !currentServer) return;
+        await createChannel(channelData.name, channelData.type, currentServer.id, user.uid);
+    };
+
     const handleSignOut = async () => {
         await signOut(auth);
         router.push("/login");
     };
 
-    // 時刻フォーマット関数
+    const handleReaction = async (messageId, emoji) => {
+        if (!user) return;
+        
+        const message = messages.find(m => m.id === messageId);
+        const userReacted = message.reactions?.[emoji]?.includes(user.uid);
+        
+        if (userReacted) {
+            await removeReaction(messageId, user.uid, emoji);
+        } else {
+            await addReaction(messageId, user.uid, emoji);
+        }
+    };
+
     const formatTime = (timestamp) => {
         if (!timestamp) return "";
         const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
         return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     };
 
+    const formatDate = (timestamp) => {
+        if (!timestamp) return "";
+        const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+        const today = new Date();
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+        
+        if (date.toDateString() === today.toDateString()) {
+            return "今日";
+        } else if (date.toDateString() === yesterday.toDateString()) {
+            return "昨日";
+        } else {
+            return date.toLocaleDateString();
+        }
+    };
+
     return (
         <div style={{
             display: 'flex',
-            flexDirection: 'column',
             height: '100vh',
             backgroundColor: '#36393f',
             color: '#dcddde',
             fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif'
         }}>
-            {/* ヘッダー */}
-            <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                padding: '12px 20px',
-                backgroundColor: '#2f3136',
-                borderBottom: '1px solid #202225',
-                boxShadow: '0 1px 0 rgba(4,4,5,0.2), 0 1.5px 0 rgba(6,6,7,0.05), 0 2px 0 rgba(4,4,5,0.05)'
-            }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                    <button
-                        onClick={() => router.push("/mypage")}
-                        style={{
-                            background: 'none',
-                            border: 'none',
-                            fontSize: 20,
-                            cursor: 'pointer',
-                            color: '#b9bbbe',
-                            padding: '8px',
-                            borderRadius: '4px',
-                            transition: 'background-color 0.17s ease'
-                        }}
-                        onMouseOver={(e) => e.target.style.backgroundColor = '#40444b'}
-                        onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}
-                        aria-label="プロフィールページへ"
-                    >
-                        👤
-                    </button>
-                    <h2 style={{
-                        margin: 0,
-                        fontSize: 18,
-                        fontWeight: 600,
-                        color: '#ffffff'
-                    }}>
-                        # 一般
-                    </h2>
-                </div>
-                
-                {user && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                        <span style={{ 
-                            fontSize: 14, 
-                            color: '#b9bbbe',
-                            fontWeight: 500
-                        }}>
-                            {user.displayName || "匿名"}
-                        </span>
-                        <button
-                            onClick={handleSignOut}
-                            style={{
-                                backgroundColor: '#5865f2',
-                                color: 'white',
-                                border: 'none',
-                                padding: '8px 16px',
-                                borderRadius: '4px',
-                                fontSize: 14,
-                                fontWeight: 500,
-                                cursor: 'pointer',
-                                transition: 'background-color 0.17s ease'
-                            }}
-                            onMouseOver={(e) => e.target.style.backgroundColor = '#4752c4'}
-                            onMouseOut={(e) => e.target.style.backgroundColor = '#5865f2'}
-                        >
-                            ログアウト
-                        </button>
-                    </div>
-                )}
-            </div>
+            {/* サーバーサイドバー */}
+            <ServerSidebar
+                servers={servers}
+                currentServer={currentServer?.id}
+                onServerSelect={(serverId) => {
+                    if (serverId === 'dm') {
+                        setCurrentServer({ id: 'dm', name: 'ダイレクトメッセージ' });
+                        setChannels(dmChannels);
+                        setCurrentChannel(null);
+                    } else {
+                        const server = servers.find(s => s.id === serverId);
+                        setCurrentServer(server);
+                        setCurrentChannel(null);
+                    }
+                }}
+                onCreateServer={handleServerCreate}
+            />
 
-            {/* メッセージエリア */}
-            <div style={{
-                flex: 1,
-                overflowY: 'auto',
-                padding: '20px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '16px'
-            }}>
-                {messages.map((msg, index) => {
-                    const showAvatar = index === 0 || messages[index - 1].userId !== msg.userId;
+            {/* チャンネルサイドバー */}
+            {currentServer && (
+                <ChannelSidebar
+                    server={currentServer}
+                    channels={channels}
+                    currentChannel={currentChannel?.id}
+                    onChannelSelect={(channelId) => {
+                        const channel = channels.find(c => c.id === channelId);
+                        setCurrentChannel(channel);
+                    }}
+                    onCreateChannel={handleChannelCreate}
+                    user={user}
+                />
+            )}
+
+            {/* メインチャットエリア */}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                {/* ヘッダー */}
+                <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '12px 20px',
+                    backgroundColor: '#2f3136',
+                    borderBottom: '1px solid #202225'
+                }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                        <h2 style={{
+                            margin: 0,
+                            fontSize: 18,
+                            fontWeight: 600,
+                            color: '#ffffff'
+                        }}>
+                            {currentChannel ? `# ${currentChannel.name}` : 'チャンネルを選択してください'}
+                        </h2>
+                    </div>
                     
-                    return (
-                        <div key={msg.id} style={{
-                            display: 'flex',
-                            alignItems: showAvatar ? 'flex-start' : 'center',
-                            gap: '16px',
-                            padding: showAvatar ? '8px 0' : '2px 0',
-                            borderRadius: '4px',
-                            transition: 'background-color 0.17s ease'
-                        }}
-                        onMouseOver={(e) => e.target.style.backgroundColor = '#32353b'}
-                        onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}
-                        >
-                            {showAvatar ? (
-                                <div style={{
-                                    width: '40px',
-                                    height: '40px',
-                                    borderRadius: '50%',
+                    {user && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                            <button
+                                onClick={() => router.push("/mypage")}
+                                style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    color: '#b9bbbe',
+                                    cursor: 'pointer',
+                                    padding: '8px',
+                                    borderRadius: '4px'
+                                }}
+                            >
+                                👤 {user.displayName || "匿名"}
+                            </button>
+                            <button
+                                onClick={handleSignOut}
+                                style={{
                                     backgroundColor: '#5865f2',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    fontSize: '18px',
-                                    fontWeight: '600',
                                     color: 'white',
-                                    flexShrink: 0
+                                    border: 'none',
+                                    padding: '8px 16px',
+                                    borderRadius: '4px',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                ログアウト
+                            </button>
+                        </div>
+                    )}
+                </div>
+
+                {/* メッセージエリア */}
+                {currentChannel && (
+                    <>
+                        <div style={{
+                            flex: 1,
+                            overflowY: 'auto',
+                            padding: '20px'
+                        }}>
+                            {messages.map((msg, index) => {
+                                const showAvatar = index === 0 || messages[index - 1].userId !== msg.userId;
+                                const showDate = index === 0 || 
+                                    formatDate(messages[index - 1].timestamp) !== formatDate(msg.timestamp);
+                                
+                                return (
+                                    <div key={msg.id}>
+                                        {showDate && (
+                                            <div style={{
+                                                textAlign: 'center',
+                                                margin: '20px 0',
+                                                color: '#72767d',
+                                                fontSize: '12px'
+                                            }}>
+                                                {formatDate(msg.timestamp)}
+                                            </div>
+                                        )}
+                                        
+                                        <div style={{
+                                            display: 'flex',
+                                            alignItems: 'flex-start',
+                                            gap: '16px',
+                                            padding: showAvatar ? '8px 0' : '2px 0',
+                                            borderRadius: '4px',
+                                            position: 'relative'
+                                        }}
+                                        onMouseEnter={(e) => {
+                                            const buttons = e.currentTarget.querySelector('.message-buttons');
+                                            if (buttons) buttons.style.opacity = '1';
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            const buttons = e.currentTarget.querySelector('.message-buttons');
+                                            if (buttons) buttons.style.opacity = '0';
+                                        }}>
+                                            {showAvatar ? (
+                                                <div style={{
+                                                    width: '40px',
+                                                    height: '40px',
+                                                    borderRadius: '50%',
+                                                    backgroundColor: '#5865f2',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    fontSize: '18px',
+                                                    fontWeight: '600',
+                                                    color: 'white'
+                                                }}>
+                                                    {(msg.userName || "匿").charAt(0).toUpperCase()}
+                                                </div>
+                                            ) : (
+                                                <div style={{ width: '40px' }} />
+                                            )}
+                                            
+                                            <div style={{ flex: 1 }}>
+                                                {showAvatar && (
+                                                    <div style={{
+                                                        display: 'flex',
+                                                        alignItems: 'baseline',
+                                                        gap: '8px',
+                                                        marginBottom: '4px'
+                                                    }}>
+                                                        <span style={{
+                                                            fontWeight: '600',
+                                                            color: '#ffffff',
+                                                            fontSize: '16px'
+                                                        }}>
+                                                            {msg.userName || "匿名"}
+                                                        </span>
+                                                        <span style={{
+                                                            fontSize: '12px',
+                                                            color: '#72767d'
+                                                        }}>
+                                                            {formatTime(msg.timestamp)}
+                                                            {msg.edited && <span> (編集済み)</span>}
+                                                        </span>
+                                                    </div>
+                                                )}
+                                                
+                                                {msg.replyTo && (
+                                                    <div style={{
+                                                        backgroundColor: '#2f3136',
+                                                        padding: '8px',
+                                                        borderRadius: '4px',
+                                                        marginBottom: '8px',
+                                                        borderLeft: '4px solid #5865f2'
+                                                    }}>
+                                                        返信中...
+                                                    </div>
+                                                )}
+                                                
+                                                <div style={{
+                                                    fontSize: '16px',
+                                                    lineHeight: '1.375',
+                                                    color: '#dcddde',
+                                                    wordWrap: 'break-word'
+                                                }}>
+                                                    {msg.content}
+                                                </div>
+                                                
+                                                {/* リアクション */}
+                                                {msg.reactions && Object.keys(msg.reactions).length > 0 && (
+                                                    <div style={{
+                                                        display: 'flex',
+                                                        gap: '4px',
+                                                        marginTop: '8px'
+                                                    }}>
+                                                        {Object.entries(msg.reactions).map(([emoji, users]) => (
+                                                            <button
+                                                                key={emoji}
+                                                                onClick={() => handleReaction(msg.id, emoji)}
+                                                                style={{
+                                                                    backgroundColor: users.includes(user?.uid) ? '#5865f2' : '#2f3136',
+                                                                    border: '1px solid #40444b',
+                                                                    borderRadius: '12px',
+                                                                    padding: '4px 8px',
+                                                                    color: '#dcddde',
+                                                                    cursor: 'pointer',
+                                                                    fontSize: '12px'
+                                                                }}
+                                                            >
+                                                                {emoji} {users.length}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                            
+                                            {/* メッセージボタン */}
+                                            {msg.userId === user?.uid && (
+                                                <div className="message-buttons" style={{
+                                                    position: 'absolute',
+                                                    right: '20px',
+                                                    top: '8px',
+                                                    display: 'flex',
+                                                    gap: '4px',
+                                                    opacity: '0',
+                                                    transition: 'opacity 0.2s'
+                                                }}>
+                                                    <button
+                                                        onClick={() => {
+                                                            setEditingMessage(msg);
+                                                            setInput(msg.content);
+                                                        }}
+                                                        style={{
+                                                            backgroundColor: '#40444b',
+                                                            border: 'none',
+                                                            borderRadius: '4px',
+                                                            padding: '4px',
+                                                            color: '#dcddde',
+                                                            cursor: 'pointer'
+                                                        }}
+                                                    >
+                                                        ✏️
+                                                    </button>
+                                                    <button
+                                                        onClick={() => deleteMessage(msg.id)}
+                                                        style={{
+                                                            backgroundColor: '#40444b',
+                                                            border: 'none',
+                                                            borderRadius: '4px',
+                                                            padding: '4px',
+                                                            color: '#dcddde',
+                                                            cursor: 'pointer'
+                                                        }}
+                                                    >
+                                                        🗑️
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setReplyingTo(msg)}
+                                                        style={{
+                                                            backgroundColor: '#40444b',
+                                                            border: 'none',
+                                                            borderRadius: '4px',
+                                                            padding: '4px',
+                                                            color: '#dcddde',
+                                                            cursor: 'pointer'
+                                                        }}
+                                                    >
+                                                        💬
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleReaction(msg.id, '👍')}
+                                                        style={{
+                                                            backgroundColor: '#40444b',
+                                                            border: 'none',
+                                                            borderRadius: '4px',
+                                                            padding: '4px',
+                                                            color: '#dcddde',
+                                                            cursor: 'pointer'
+                                                        }}
+                                                    >
+                                                        👍
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                            <div ref={messagesEndRef} />
+                        </div>
+
+                        {/* 入力エリア */}
+                        <div style={{
+                            padding: '20px',
+                            backgroundColor: '#36393f',
+                            borderTop: '1px solid #40444b'
+                        }}>
+                            {(editingMessage || replyingTo) && (
+                                <div style={{
+                                    backgroundColor: '#2f3136',
+                                    padding: '8px 12px',
+                                    borderRadius: '4px',
+                                    marginBottom: '8px',
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center'
                                 }}>
-                                    {(msg.userName || "匿").charAt(0).toUpperCase()}
-                                </div>
-                            ) : (
-                                <div style={{ width: '40px', flexShrink: 0 }}>
-                                    <span style={{
-                                        fontSize: '11px',
-                                        color: '#72767d',
-                                        marginLeft: '8px',
-                                        opacity: 0
-                                    }}>
-                                        {formatTime(msg.timestamp)}
+                                    <span style={{ color: '#dcddde', fontSize: '14px' }}>
+                                        {editingMessage ? '編集中...' : `${replyingTo.userName}に返信中...`}
                                     </span>
+                                    <button
+                                        onClick={() => {
+                                            setEditingMessage(null);
+                                            setReplyingTo(null);
+                                            setInput('');
+                                        }}
+                                        style={{
+                                            background: 'none',
+                                            border: 'none',
+                                            color: '#72767d',
+                                            cursor: 'pointer'
+                                        }}
+                                    >
+                                        ✕
+                                    </button>
                                 </div>
                             )}
                             
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                                {showAvatar && (
-                                    <div style={{
+                            <div style={{
+                                backgroundColor: '#40444b',
+                                borderRadius: '8px',
+                                padding: '12px',
+                                display: 'flex',
+                                alignItems: 'flex-end',
+                                gap: '12px'
+                            }}>
+                                <textarea
+                                    value={input}
+                                    onChange={(e) => setInput(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === "Enter" && !e.shiftKey) {
+                                            e.preventDefault();
+                                            handleSendMessage();
+                                        }
+                                    }}
+                                    placeholder={`#${currentChannel.name} にメッセージを送信`}
+                                    style={{
+                                        flex: 1,
+                                        backgroundColor: 'transparent',
+                                        border: 'none',
+                                        color: '#dcddde',
+                                        fontSize: '16px',
+                                        resize: 'none',
+                                        outline: 'none',
+                                        fontFamily: 'inherit',
+                                        lineHeight: '1.375',
+                                        minHeight: '24px',
+                                        maxHeight: '120px'
+                                    }}
+                                    rows={1}
+                                />
+                                <button
+                                    onClick={handleSendMessage}
+                                    disabled={!input.trim()}
+                                    style={{
+                                        backgroundColor: input.trim() ? '#5865f2' : '#4f545c',
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: '4px',
+                                        width: '32px',
+                                        height: '32px',
+                                        cursor: input.trim() ? 'pointer' : 'not-allowed',
                                         display: 'flex',
-                                        alignItems: 'baseline',
-                                        gap: '8px',
-                                        marginBottom: '4px'
-                                    }}>
-                                        <span style={{
-                                            fontWeight: '600',
-                                            color: '#ffffff',
-                                            fontSize: '16px'
-                                        }}>
-                                            {msg.userName || "匿名"}
-                                        </span>
-                                        <span style={{
-                                            fontSize: '12px',
-                                            color: '#72767d',
-                                            fontWeight: '400'
-                                        }}>
-                                            {formatTime(msg.timestamp)}
-                                        </span>
-                                    </div>
-                                )}
-                                <div style={{
-                                    fontSize: '16px',
-                                    lineHeight: '1.375',
-                                    color: '#dcddde',
-                                    wordWrap: 'break-word',
-                                    marginLeft: showAvatar ? '0' : '0'
-                                }}>
-                                    {msg.message}
-                                </div>
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        fontSize: '16px'
+                                    }}
+                                >
+                                    ➤
+                                </button>
                             </div>
                         </div>
-                    );
-                })}
-                <div ref={messagesEndRef} />
-            </div>
-
-            {/* 入力エリア */}
-            <div style={{
-                padding: '20px',
-                backgroundColor: '#36393f',
-                borderTop: '1px solid #40444b'
-            }}>
-                <div style={{
-                    backgroundColor: '#40444b',
-                    borderRadius: '8px',
-                    padding: '12px',
-                    display: 'flex',
-                    alignItems: 'flex-end',
-                    gap: '12px'
-                }}>
-                    <textarea
-                        value={input}
-                        onChange={(e) => setInput(e.target.value)}
-                        onKeyDown={(e) => {
-                            if (e.key === "Enter" && !e.shiftKey) {
-                                e.preventDefault();
-                                sendMessage();
-                            }
-                        }}
-                        placeholder="#一般 にメッセージを送信"
-                        style={{
-                            flex: 1,
-                            backgroundColor: 'transparent',
-                            border: 'none',
-                            color: '#dcddde',
-                            fontSize: '16px',
-                            resize: 'none',
-                            outline: 'none',
-                            fontFamily: 'inherit',
-                            lineHeight: '1.375',
-                            minHeight: '24px',
-                            maxHeight: '120px'
-                        }}
-                        rows={1}
-                    />
-                    <button
-                        onClick={sendMessage}
-                        disabled={!input.trim()}
-                        style={{
-                            backgroundColor: input.trim() ? '#5865f2' : '#4f545c',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '4px',
-                            width: '32px',
-                            height: '32px',
-                            cursor: input.trim() ? 'pointer' : 'not-allowed',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: '16px',
-                            transition: 'background-color 0.17s ease',
-                            flexShrink: 0
-                        }}
-                        onMouseOver={(e) => {
-                            if (input.trim()) e.target.style.backgroundColor = '#4752c4';
-                        }}
-                        onMouseOut={(e) => {
-                            if (input.trim()) e.target.style.backgroundColor = '#5865f2';
-                        }}
-                    >
-                        ➤
-                    </button>
-                </div>
+                    </>
+                )}
             </div>
         </div>
     );

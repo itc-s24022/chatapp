@@ -24,8 +24,35 @@ export default function ChannelSidebar({
         setShowCreateModal(false);
     };
 
-    const textChannels = channels.filter(ch => ch.type === 'text');
+    const textChannels = channels.filter(ch => ch.type === 'text' || !ch.type);
     const voiceChannels = channels.filter(ch => ch.type === 'voice');
+
+    if (server?.id === 'dm') {
+        return (
+            <div style={{
+                width: '240px',
+                backgroundColor: '#2f3136',
+                display: 'flex',
+                flexDirection: 'column'
+            }}>
+                <div style={{
+                    padding: '12px 16px',
+                    borderBottom: '1px solid #202225',
+                    color: 'white',
+                    fontWeight: '600',
+                    fontSize: '16px'
+                }}>
+                    ダイレクトメッセージ
+                </div>
+                
+                <div style={{ padding: '16px', flex: 1 }}>
+                    <p style={{ color: '#b9bbbe', fontSize: '14px' }}>
+                        フレンド機能は開発中です...
+                    </p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div style={{
@@ -46,30 +73,27 @@ export default function ChannelSidebar({
                 justifyContent: 'space-between',
                 cursor: 'pointer'
             }}>
-                {server.name}
+                {server?.name || 'サーバー'}
                 <span style={{ fontSize: '18px' }}>⌄</span>
             </div>
 
             {/* チャンネルリスト */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: '16px 8px' }}>
-                {/* テキストチャンネル */}
-                <div style={{ marginBottom: '24px' }}>
+            <div style={{ flex: 1, overflowY: 'auto' }}>
+                {/* テキストチャンネルセクション */}
+                <div style={{ margin: '16px 0 8px 0' }}>
                     <div style={{
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'space-between',
-                        padding: '0 8px',
-                        marginBottom: '8px'
+                        padding: '0 8px 0 16px',
+                        color: '#8e9297',
+                        fontSize: '12px',
+                        fontWeight: '600',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.02em',
+                        cursor: 'pointer'
                     }}>
-                        <span style={{
-                            color: '#8e9297',
-                            fontSize: '12px',
-                            fontWeight: '600',
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.02em'
-                        }}>
-                            テキストチャンネル
-                        </span>
+                        <span>テキストチャンネル</span>
                         <button
                             onClick={() => {
                                 setChannelType('text');
@@ -78,39 +102,43 @@ export default function ChannelSidebar({
                             style={{
                                 background: 'none',
                                 border: 'none',
-                                color: '#b9bbbe',
-                                fontSize: '18px',
+                                color: '#8e9297',
                                 cursor: 'pointer',
+                                fontSize: '18px',
                                 padding: '4px',
                                 borderRadius: '4px'
                             }}
+                            onMouseOver={(e) => e.target.style.color = '#dcddde'}
+                            onMouseOut={(e) => e.target.style.color = '#8e9297'}
                         >
                             +
                         </button>
                     </div>
+                    
                     {textChannels.map(channel => (
                         <div
                             key={channel.id}
-                            onClick={() => onChannelSelect(channel)}
+                            onClick={() => onChannelSelect(channel.id)}
                             style={{
-                                padding: '6px 8px',
-                                margin: '1px 0',
-                                borderRadius: '4px',
-                                cursor: 'pointer',
                                 display: 'flex',
                                 alignItems: 'center',
-                                gap: '6px',
-                                backgroundColor: currentChannel?.id === channel.id ? '#393c43' : 'transparent',
-                                color: currentChannel?.id === channel.id ? '#dcddde' : '#8e9297'
+                                gap: '8px',
+                                padding: '6px 8px 6px 16px',
+                                margin: '1px 8px',
+                                borderRadius: '4px',
+                                cursor: 'pointer',
+                                backgroundColor: currentChannel === channel.id ? '#5865f2' : 'transparent',
+                                color: currentChannel === channel.id ? '#ffffff' : '#8e9297',
+                                transition: 'all 0.15s ease'
                             }}
                             onMouseOver={(e) => {
-                                if (currentChannel?.id !== channel.id) {
-                                    e.target.style.backgroundColor = '#34373c';
+                                if (currentChannel !== channel.id) {
+                                    e.target.style.backgroundColor = '#40444b';
                                     e.target.style.color = '#dcddde';
                                 }
                             }}
                             onMouseOut={(e) => {
-                                if (currentChannel?.id !== channel.id) {
+                                if (currentChannel !== channel.id) {
                                     e.target.style.backgroundColor = 'transparent';
                                     e.target.style.color = '#8e9297';
                                 }
@@ -122,24 +150,21 @@ export default function ChannelSidebar({
                     ))}
                 </div>
 
-                {/* ボイスチャンネル */}
-                <div>
+                {/* ボイスチャンネルセクション */}
+                <div style={{ margin: '24px 0 8px 0' }}>
                     <div style={{
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'space-between',
-                        padding: '0 8px',
-                        marginBottom: '8px'
+                        padding: '0 8px 0 16px',
+                        color: '#8e9297',
+                        fontSize: '12px',
+                        fontWeight: '600',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.02em',
+                        cursor: 'pointer'
                     }}>
-                        <span style={{
-                            color: '#8e9297',
-                            fontSize: '12px',
-                            fontWeight: '600',
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.02em'
-                        }}>
-                            ボイスチャンネル
-                        </span>
+                        <span>ボイスチャンネル</span>
                         <button
                             onClick={() => {
                                 setChannelType('voice');
@@ -148,77 +173,86 @@ export default function ChannelSidebar({
                             style={{
                                 background: 'none',
                                 border: 'none',
-                                color: '#b9bbbe',
-                                fontSize: '18px',
+                                color: '#8e9297',
                                 cursor: 'pointer',
+                                fontSize: '18px',
                                 padding: '4px',
                                 borderRadius: '4px'
                             }}
+                            onMouseOver={(e) => e.target.style.color = '#dcddde'}
+                            onMouseOut={(e) => e.target.style.color = '#8e9297'}
                         >
                             +
                         </button>
                     </div>
+                    
                     {voiceChannels.map(channel => (
                         <div
                             key={channel.id}
-                            onClick={() => onChannelSelect(channel)}
+                            onClick={() => onChannelSelect(channel.id)}
                             style={{
-                                padding: '6px 8px',
-                                margin: '1px 0',
-                                borderRadius: '4px',
-                                cursor: 'pointer',
                                 display: 'flex',
                                 alignItems: 'center',
-                                gap: '6px',
-                                backgroundColor: currentChannel?.id === channel.id ? '#393c43' : 'transparent',
-                                color: currentChannel?.id === channel.id ? '#dcddde' : '#8e9297'
+                                gap: '8px',
+                                padding: '6px 8px 6px 16px',
+                                margin: '1px 8px',
+                                borderRadius: '4px',
+                                cursor: 'pointer',
+                                backgroundColor: currentChannel === channel.id ? '#5865f2' : 'transparent',
+                                color: currentChannel === channel.id ? '#ffffff' : '#8e9297',
+                                transition: 'all 0.15s ease'
                             }}
                         >
-                            <span style={{ fontSize: '16px' }}>🔊</span>
+                            <span style={{ fontSize: '20px' }}>🔊</span>
                             <span style={{ fontSize: '16px' }}>{channel.name}</span>
                         </div>
                     ))}
                 </div>
             </div>
 
-            {/* ユーザー情報 */}
-            <div style={{
-                padding: '8px',
-                backgroundColor: '#292b2f',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
-            }}>
+            {/* ユーザー情報エリア */}
+            {user && (
                 <div style={{
-                    width: '32px',
-                    height: '32px',
-                    borderRadius: '50%',
-                    backgroundColor: '#5865f2',
+                    backgroundColor: '#232428',
+                    padding: '8px',
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'center',
-                    color: 'white',
-                    fontSize: '14px',
-                    fontWeight: '600'
+                    gap: '8px'
                 }}>
-                    {user?.displayName?.charAt(0) || '?'}
-                </div>
-                <div style={{ flex: 1 }}>
                     <div style={{
-                        color: '#dcddde',
+                        width: '32px',
+                        height: '32px',
+                        borderRadius: '50%',
+                        backgroundColor: '#5865f2',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: 'white',
                         fontSize: '14px',
                         fontWeight: '600'
                     }}>
-                        {user?.displayName || '匿名'}
+                        {(user.displayName || "匿").charAt(0).toUpperCase()}
                     </div>
-                    <div style={{
-                        color: '#b9bbbe',
-                        fontSize: '12px'
-                    }}>
-                        オンライン
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{
+                            color: '#ffffff',
+                            fontSize: '14px',
+                            fontWeight: '600',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis'
+                        }}>
+                            {user.displayName || "匿名"}
+                        </div>
+                        <div style={{
+                            color: '#b9bbbe',
+                            fontSize: '12px'
+                        }}>
+                            オンライン
+                        </div>
                     </div>
                 </div>
-            </div>
+            )}
 
             {/* チャンネル作成モーダル */}
             {showCreateModal && (
@@ -228,7 +262,7 @@ export default function ChannelSidebar({
                     left: 0,
                     right: 0,
                     bottom: 0,
-                    backgroundColor: 'rgba(0,0,0,0.85)',
+                    backgroundColor: 'rgba(0, 0, 0, 0.85)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -236,65 +270,115 @@ export default function ChannelSidebar({
                 }}>
                     <div style={{
                         backgroundColor: '#36393f',
-                        padding: '32px',
                         borderRadius: '8px',
+                        padding: '24px',
                         width: '440px',
                         maxWidth: '90vw'
                     }}>
                         <h2 style={{
-                            color: 'white',
+                            color: '#ffffff',
                             fontSize: '24px',
                             fontWeight: '600',
-                            margin: '0 0 24px 0'
+                            margin: '0 0 20px 0'
                         }}>
-                            {channelType === 'text' ? 'テキスト' : 'ボイス'}チャンネルを作成
+                            チャンネルを作成
                         </h2>
-
-                        <label style={{
-                            display: 'block',
-                            color: '#b9bbbe',
-                            fontSize: '12px',
-                            fontWeight: '600',
-                            textTransform: 'uppercase',
-                            marginBottom: '8px',
-                            letterSpacing: '0.02em'
-                        }}>
-                            チャンネル名
-                        </label>
-                        <input
-                            type="text"
-                            value={channelName}
-                            onChange={(e) => setChannelName(e.target.value)}
-                            placeholder={`${channelType === 'text' ? '#' : '🔊'} チャンネル名`}
-                            style={{
-                                width: '100%',
-                                backgroundColor: '#202225',
-                                border: 'none',
-                                borderRadius: '4px',
-                                padding: '12px',
-                                color: '#dcddde',
-                                fontSize: '16px',
-                                outline: 'none',
-                                boxSizing: 'border-box',
-                                marginBottom: '24px'
-                            }}
-                            onKeyPress={(e) => {
-                                if (e.key === 'Enter') handleCreateChannel();
-                            }}
-                        />
-
+                        
+                        <div style={{ marginBottom: '20px' }}>
+                            <label style={{
+                                color: '#b9bbbe',
+                                fontSize: '12px',
+                                fontWeight: '600',
+                                textTransform: 'uppercase',
+                                display: 'block',
+                                marginBottom: '8px'
+                            }}>
+                                チャンネルタイプ
+                            </label>
+                            <div style={{ display: 'flex', gap: '12px' }}>
+                                <label style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    color: '#dcddde',
+                                    cursor: 'pointer'
+                                }}>
+                                    <input
+                                        type="radio"
+                                        value="text"
+                                        checked={channelType === 'text'}
+                                        onChange={(e) => setChannelType(e.target.value)}
+                                    />
+                                    # テキスト
+                                </label>
+                                <label style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    color: '#dcddde',
+                                    cursor: 'pointer'
+                                }}>
+                                    <input
+                                        type="radio"
+                                        value="voice"
+                                        checked={channelType === 'voice'}
+                                        onChange={(e) => setChannelType(e.target.value)}
+                                    />
+                                    🔊 ボイス
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <div style={{ marginBottom: '20px' }}>
+                            <label style={{
+                                color: '#b9bbbe',
+                                fontSize: '12px',
+                                fontWeight: '600',
+                                textTransform: 'uppercase',
+                                display: 'block',
+                                marginBottom: '8px'
+                            }}>
+                                チャンネル名
+                            </label>
+                            <input
+                                type="text"
+                                value={channelName}
+                                onChange={(e) => setChannelName(e.target.value)}
+                                placeholder="新しいチャンネル"
+                                style={{
+                                    width: '100%',
+                                    padding: '10px',
+                                    backgroundColor: '#202225',
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    color: '#dcddde',
+                                    fontSize: '16px',
+                                    outline: 'none'
+                                }}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                        handleCreateChannel();
+                                    }
+                                }}
+                                autoFocus
+                            />
+                        </div>
+                        
                         <div style={{
                             display: 'flex',
-                            gap: '12px',
-                            justifyContent: 'flex-end'
+                            justifyContent: 'flex-end',
+                            gap: '12px'
                         }}>
                             <button
-                                onClick={() => setShowCreateModal(false)}
+                                onClick={() => {
+                                    setShowCreateModal(false);
+                                    setChannelName('');
+                                }}
                                 style={{
-                                    padding: '12px 16px',
                                     backgroundColor: 'transparent',
-                                    color: '#b9bbbe',
                                     border: 'none',
+                                    color: '#ffffff',
+                                    padding: '12px 16px',
                                     borderRadius: '4px',
                                     cursor: 'pointer',
                                     fontSize: '14px',
@@ -307,17 +391,17 @@ export default function ChannelSidebar({
                                 onClick={handleCreateChannel}
                                 disabled={!channelName.trim()}
                                 style={{
-                                    padding: '12px 16px',
                                     backgroundColor: channelName.trim() ? '#5865f2' : '#4f545c',
-                                    color: 'white',
                                     border: 'none',
+                                    color: 'white',
+                                    padding: '12px 16px',
                                     borderRadius: '4px',
                                     cursor: channelName.trim() ? 'pointer' : 'not-allowed',
                                     fontSize: '14px',
                                     fontWeight: '500'
                                 }}
                             >
-                                チャンネルを作成
+                                作成
                             </button>
                         </div>
                     </div>
