@@ -1,4 +1,3 @@
-
 import { useEffect, useState, useRef } from "react";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { auth } from "../lib/firebase";
@@ -88,7 +87,7 @@ export default function ChatPage() {
                 ...doc.data()
             }));
             setServers(serverList);
-            
+
             if (serverList.length > 0 && !currentServer) {
                 setCurrentServer(serverList[0]);
             }
@@ -122,7 +121,7 @@ export default function ChatPage() {
                 ...doc.data()
             }));
             setChannels(channelList);
-            
+
             if (channelList.length > 0 && !currentChannel) {
                 setCurrentChannel(channelList[0]);
             }
@@ -175,7 +174,7 @@ export default function ChatPage() {
 
     const handleSendMessage = async () => {
         if ((!input.trim() && !imageAttachment) || !user || !currentChannel) return;
-        
+
         // 送信権限チェック
         if (!hasPermission(userPermissions, DEFAULT_PERMISSIONS.SEND_MESSAGES)) {
             alert('メッセージを送信する権限がありません');
@@ -233,10 +232,10 @@ export default function ChatPage() {
 
     const handleReaction = async (messageId, emoji) => {
         if (!user) return;
-        
+
         const message = messages.find(m => m.id === messageId);
         const userReacted = message.reactions?.[emoji]?.includes(user.uid);
-        
+
         if (userReacted) {
             await removeReaction(messageId, user.uid, emoji);
         } else {
@@ -246,19 +245,40 @@ export default function ChatPage() {
 
     const handleInviteUser = async () => {
         if (!inviteEmail.trim() || !currentServer) return;
-        
+
         try {
-            await inviteUserToServer(
-                currentServer.id, 
-                inviteEmail.trim(), 
-                user.displayName || '匿名'
-            );
-            alert('招待を送信しました');
-            setInviteEmail('');
+            await inviteUserToServer(currentServer.id, inviteEmail.trim(), user.displayName || '匿名');
+            setInviteEmail("");
             setShowInviteModal(false);
+            alert('招待を送信しました');
         } catch (error) {
             console.error('招待エラー:', error);
-            alert(error.message || '招待に失敗しました');
+            alert('招待に失敗しました: ' + error.message);
+        }
+    };
+
+    const handleServerDelete = async (serverId) => {
+        try {
+            await deleteServer(serverId, user.uid);
+            // 削除されたサーバーが現在選択されている場合、DMに切り替え
+            if (currentServer?.id === serverId) {
+                setCurrentServer({ id: 'dm', name: 'ダイレクトメッセージ' });
+                setChannels(dmChannels);
+                setCurrentChannel(null);
+                setMessages([]);
+            }
+        } catch (error) {
+            console.error('サーバー削除エラー:', error);
+            alert('サーバー削除に失敗しました: ' + error.message);
+        }
+    };
+
+    const handleServerIconUpdate = async (serverId, imageId) => {
+        try {
+            await updateServerIcon(serverId, imageId);
+        } catch (error) {
+            console.error('アイコン更新エラー:', error);
+            alert('アイコン更新に失敗しました');
         }
     };
 
@@ -274,7 +294,7 @@ export default function ChatPage() {
         const today = new Date();
         const yesterday = new Date(today);
         yesterday.setDate(yesterday.getDate() - 1);
-        
+
         if (date.toDateString() === today.toDateString()) {
             return "今日";
         } else if (date.toDateString() === yesterday.toDateString()) {
@@ -347,7 +367,7 @@ export default function ChatPage() {
                         }}>
                             {currentChannel ? `# ${currentChannel.name}` : 'チャンネルを選択してください'}
                         </h2>
-                        
+
                         {currentServer && currentServer.id !== 'dm' && (
                             <div style={{ display: 'flex', gap: '8px' }}>
                                 <button
@@ -397,7 +417,7 @@ export default function ChatPage() {
                             </div>
                         )}
                     </div>
-                    
+
                     {user && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                             <button
@@ -439,218 +459,342 @@ export default function ChatPage() {
                             padding: '20px'
                         }}>
                             {messages.map((msg, index) => {
-                                const showAvatar = index === 0 || messages[index - 1].userId !== msg.userId;
-                                const showDate = index === 0 || 
-                                    formatDate(messages[index - 1].timestamp) !== formatDate(msg.timestamp);
-                                
-                                return (
-                                    <div key={msg.id}>
-                                        {showDate && (
-                                            <div style={{
-                                                textAlign: 'center',
-                                                margin: '20px 0',
-                                                color: '#72767d',
-                                                fontSize: '12px'
-                                            }}>
-                                                {formatDate(msg.timestamp)}
-                                            </div>
-                                        )}
-                                        
-                                        <div style={{
-                                            display: 'flex',
-                                            alignItems: 'flex-start',
-                                            gap: '16px',
-                                            padding: showAvatar ? '8px 0' : '2px 0',
-                                            borderRadius: '4px',
-                                            position: 'relative'
-                                        }}
-                                        onMouseEnter={(e) => {
-                                            const buttons = e.currentTarget.querySelector('.message-buttons');
-                                            if (buttons) buttons.style.opacity = '1';
-                                        }}
-                                        onMouseLeave={(e) => {
-                                            const buttons = e.currentTarget.querySelector('.message-buttons');
-                                            if (buttons) buttons.style.opacity = '0';
-                                        }}>
-                                            {showAvatar ? (
+                                    const prevMsg = messages[index - 1];
+                                    const showDate = !prevMsg || formatDate(msg.timestamp) !== formatDate(prevMsg.timestamp);
+
+                                    // 連続メッセージかチェック（同じユーザーが5分以内に投稿）
+                                    const isConsecutive = prevMsg && 
+                                        prevMsg.userId === msg.userId && 
+                                        msg.timestamp && prevMsg.timestamp &&
+                                        (msg.timestamp.toDate() - prevMsg.timestamp.toDate()) < 5 * 60 * 1000;
+
+                                    return (
+                                        <div key={msg.id}>
+                                            {showDate && (
                                                 <div style={{
-                                                    width: '40px',
-                                                    height: '40px',
-                                                    borderRadius: '50%',
-                                                    backgroundColor: '#5865f2',
                                                     display: 'flex',
                                                     alignItems: 'center',
-                                                    justifyContent: 'center',
-                                                    fontSize: '18px',
-                                                    fontWeight: '600',
-                                                    color: 'white'
+                                                    margin: '24px 16px 8px',
+                                                    gap: '12px'
                                                 }}>
-                                                    {(msg.userName || "匿").charAt(0).toUpperCase()}
+                                                    <div style={{
+                                                        height: '1px',
+                                                        backgroundColor: '#40444b',
+                                                        flex: 1
+                                                    }} />
+                                                    <span style={{
+                                                        color: '#72767d',
+                                                        fontSize: '12px',
+                                                        fontWeight: '600',
+                                                        backgroundColor: '#36393f',
+                                                        padding: '2px 8px',
+                                                        borderRadius: '8px'
+                                                    }}>
+                                                        {formatDate(msg.timestamp)}
+                                                    </span>
+                                                    <div style={{
+                                                        height: '1px',
+                                                        backgroundColor: '#40444b',
+                                                        flex: 1
+                                                    }} />
                                                 </div>
-                                            ) : (
-                                                <div style={{ width: '40px' }} />
                                             )}
-                                            
-                                            <div style={{ flex: 1 }}>
-                                                {showAvatar && (
+
+                                            <div style={{
+                                                padding: isConsecutive ? '1px 16px 1px 72px' : '8px 16px',
+                                                display: 'flex',
+                                                gap: '12px',
+                                                alignItems: 'flex-start',
+                                                position: 'relative'
+                                            }}
+                                            onMouseEnter={() => setHoveredMessage(msg.id)}
+                                            onMouseLeave={() => setHoveredMessage(null)}>
+
+                                                {/* アバター */}
+                                                {!isConsecutive && (
                                                     <div style={{
+                                                        width: '40px',
+                                                        height: '40px',
+                                                        borderRadius: '50%',
+                                                        backgroundColor: '#5865f2',
                                                         display: 'flex',
-                                                        alignItems: 'baseline',
-                                                        gap: '8px',
-                                                        marginBottom: '4px'
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center',
+                                                        color: 'white',
+                                                        fontSize: '16px',
+                                                        fontWeight: '600',
+                                                        flexShrink: 0
                                                     }}>
-                                                        <span style={{
-                                                            fontWeight: '600',
-                                                            color: '#ffffff',
-                                                            fontSize: '16px'
-                                                        }}>
-                                                            {msg.userName || "匿名"}
-                                                        </span>
-                                                        <span style={{
-                                                            fontSize: '12px',
-                                                            color: '#72767d'
-                                                        }}>
-                                                            {formatTime(msg.timestamp)}
-                                                            {msg.edited && <span> (編集済み)</span>}
-                                                        </span>
+                                                        {(msg.userName || '匿名').charAt(0).toUpperCase()}
                                                     </div>
                                                 )}
-                                                
-                                                {msg.replyTo && (
+
+                                                {/* 連続メッセージの時刻表示 */}
+                                                {isConsecutive && (
                                                     <div style={{
-                                                        backgroundColor: '#2f3136',
-                                                        padding: '8px',
-                                                        borderRadius: '4px',
-                                                        marginBottom: '8px',
-                                                        borderLeft: '4px solid #5865f2'
-                                                    }}>
-                                                        返信中...
+                                                        position: 'absolute',
+                                                        left: '16px',
+                                                        top: '8px',
+                                                        width: '40px',
+                                                        textAlign: 'center',
+                                                        fontSize: '11px',
+                                                        color: '#72767d',
+                                                        opacity: 0,
+                                                        transition: 'opacity 0.1s'
+                                                    }}
+                                                    onMouseEnter={(e) => e.target.style.opacity = 1}
+                                                    onMouseLeave={(e) => e.target.style.opacity = 0}>
+                                                        {formatTime(msg.timestamp)}
                                                     </div>
                                                 )}
-                                                
-                                                <div style={{
-                                                    fontSize: '16px',
-                                                    lineHeight: '1.375',
-                                                    color: '#dcddde',
-                                                    wordWrap: 'break-word'
-                                                }}>
-                                                    {msg.content}
+
+                                                <div style={{ flex: 1 }}>
+                                                    {/* ユーザー名と時間（初回メッセージのみ） */}
+                                                    {!isConsecutive && (
+                                                        <div style={{
+                                                            display: 'flex',
+                                                            alignItems: 'baseline',
+                                                            gap: '8px',
+                                                            marginBottom: '2px'
+                                                        }}>
+                                                            <span style={{
+                                                                fontWeight: '600',
+                                                                color: '#ffffff',
+                                                                fontSize: '16px'
+                                                            }}>
+                                                                {msg.userName || '匿名'}
+                                                            </span>
+                                                            <span style={{
+                                                                fontSize: '12px',
+                                                                color: '#72767d'
+                                                            }}>
+                                                                {formatTime(msg.timestamp)}
+                                                            </span>
+                                                            {msg.edited && (
+                                                                <span style={{
+                                                                    fontSize: '10px',
+                                                                    color: '#72767d',
+                                                                    fontStyle: 'italic'
+                                                                }}>
+                                                                    (編集済み)
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    )}
+
+                                                    {/* 返信先表示 */}
+                                                    {msg.replyTo && (
+                                                        <div style={{
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: '4px',
+                                                            marginBottom: '4px',
+                                                            padding: '4px 8px',
+                                                            backgroundColor: '#2f3136',
+                                                            borderRadius: '4px',
+                                                            borderLeft: '4px solid #5865f2',
+                                                            color: '#b9bbbe',
+                                                            fontSize: '13px'
+                                                        }}>
+                                                            <span>↳</span>
+                                                            <span style={{ fontWeight: '600' }}>返信:</span>
+                                                            <span>{msg.replyTo}</span>
+                                                        </div>
+                                                    )}
+
+                                                    {/* メッセージ内容 */}
+                                                    <div style={{
+                                                        color: '#dcddde',
+                                                        fontSize: '16px',
+                                                        lineHeight: '1.375',
+                                                        wordWrap: 'break-word',
+                                                        marginBottom: msg.attachments?.length ? '8px' : '0'
+                                                    }}>
+                                                        {msg.content}
+                                                    </div>
+
+                                                    {/* 添付ファイル表示 */}
+                                                    {msg.attachments && msg.attachments.map((attachment, idx) => (
+                                                        <div key={idx} style={{ marginBottom: '8px' }}>
+                                                            {attachment.type === 'image' && (
+                                                                <AttachmentImage attachmentId={attachment.id} />
+                                                            )}
+                                                        </div>
+                                                    ))}
+
+                                                    {/* リアクション表示 */}
+                                                    {msg.reactions && Object.keys(msg.reactions).length > 0 && (
+                                                        <div style={{
+                                                            display: 'flex',
+                                                            gap: '4px',
+                                                            marginTop: '4px',
+                                                            flexWrap: 'wrap'
+                                                        }}>
+                                                            {Object.entries(msg.reactions).map(([emoji, users]) => (
+                                                                <button
+                                                                    key={emoji}
+                                                                    onClick={() => {
+                                                                        if (users.includes(user.uid)) {
+                                                                            removeReaction(msg.id, user.uid, emoji);
+                                                                        } else {
+                                                                            addReaction(msg.id, user.uid, emoji);
+                                                                        }
+                                                                    }}
+                                                                    style={{
+                                                                        backgroundColor: users.includes(user.uid) ? '#5865f2' : 'transparent',
+                                                                        border: `1px solid ${users.includes(user.uid) ? '#5865f2' : '#40444b'}`,
+                                                                        borderRadius: '12px',
+                                                                        padding: '4px 8px',
+                                                                        color: '#dcddde',
+                                                                        fontSize: '13px',
+                                                                        cursor: 'pointer',
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        gap: '4px',
+                                                                        transition: 'all 0.1s ease'
+                                                                    }}
+                                                                    onMouseOver={(e) => {
+                                                                        if (!users.includes(user.uid)) {
+                                                                            e.target.style.backgroundColor = '#40444b';
+                                                                        }
+                                                                    }}
+                                                                    onMouseOut={(e) => {
+                                                                        if (!users.includes(user.uid)) {
+                                                                            e.target.style.backgroundColor = 'transparent';
+                                                                        }
+                                                                    }}
+                                                                >
+                                                                    <span>{emoji}</span>
+                                                                    <span style={{ fontSize: '11px', fontWeight: '600' }}>
+                                                                        {users.length}
+                                                                    </span>
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    )}
                                                 </div>
-                                                
-                                                {/* 画像添付 */}
-                                                {msg.attachments && msg.attachments.length > 0 && (
-                                                    <div style={{ marginTop: '8px' }}>
-                                                        {msg.attachments.map((attachment, index) => (
-                                                            attachment.type === 'image' && (
-                                                                <ImageDisplay 
-                                                                    key={index}
-                                                                    imageId={attachment.id}
-                                                                />
-                                                            )
-                                                        ))}
-                                                    </div>
-                                                )}
-                                                
-                                                {/* リアクション */}
-                                                {msg.reactions && Object.keys(msg.reactions).length > 0 && (
+
+                                                {/* メッセージアクション */}
+                                                {hoveredMessage === msg.id && (
                                                     <div style={{
+                                                        position: 'absolute',
+                                                        top: '-8px',
+                                                        right: '20px',
                                                         display: 'flex',
-                                                        gap: '4px',
-                                                        marginTop: '8px'
+                                                        gap: '2px',
+                                                        backgroundColor: '#2f3136',
+                                                        padding: '4px',
+                                                        borderRadius: '8px',
+                                                        border: '1px solid #40444b',
+                                                        boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
                                                     }}>
-                                                        {Object.entries(msg.reactions).map(([emoji, users]) => (
-                                                            <button
-                                                                key={emoji}
-                                                                onClick={() => handleReaction(msg.id, emoji)}
-                                                                style={{
-                                                                    backgroundColor: users.includes(user?.uid) ? '#5865f2' : '#2f3136',
-                                                                    border: '1px solid #40444b',
-                                                                    borderRadius: '12px',
-                                                                    padding: '4px 8px',
-                                                                    color: '#dcddde',
-                                                                    cursor: 'pointer',
-                                                                    fontSize: '12px'
-                                                                }}
-                                                            >
-                                                                {emoji} {users.length}
-                                                            </button>
-                                                        ))}
+                                                        <button
+                                                            onClick={() => setReplyingTo(msg)}
+                                                            style={{
+                                                                backgroundColor: 'transparent',
+                                                                border: 'none',
+                                                                borderRadius: '4px',
+                                                                padding: '6px',
+                                                                color: '#b9bbbe',
+                                                                cursor: 'pointer',
+                                                                fontSize: '16px'
+                                                            }}
+                                                            onMouseOver={(e) => {
+                                                                e.target.style.backgroundColor = '#40444b';
+                                                                e.target.style.color = '#dcddde';
+                                                            }}
+                                                            onMouseOut={(e) => {
+                                                                e.target.style.backgroundColor = 'transparent';
+                                                                e.target.style.color = '#b9bbbe';
+                                                            }}
+                                                            title="返信"
+                                                        >
+                                                            💬
+                                                        </button>
+
+                                                        {msg.userId === user.uid && (
+                                                            <>
+                                                                <button
+                                                                    onClick={() => {
+                                                                        setEditingMessage(msg);
+                                                                        setInput(msg.content);
+                                                                    }}
+                                                                    style={{
+                                                                        backgroundColor: 'transparent',
+                                                                        border: 'none',
+                                                                        borderRadius: '4px',
+                                                                        padding: '6px',
+                                                                        color: '#b9bbbe',
+                                                                        cursor: 'pointer',
+                                                                        fontSize: '16px'
+                                                                    }}
+                                                                    onMouseOver={(e) => {
+                                                                        e.target.style.backgroundColor = '#40444b';
+                                                                        e.target.style.color = '#dcddde';
+                                                                    }}
+                                                                    onMouseOut={(e) => {
+                                                                        e.target.style.backgroundColor = 'transparent';
+                                                                        e.target.style.color = '#b9bbbe';
+                                                                    }}
+                                                                    title="編集"
+                                                                >
+                                                                    ✏️
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => deleteMessage(msg.id)}
+                                                                    style={{
+                                                                        backgroundColor: 'transparent',
+                                                                        border: 'none',
+                                                                        borderRadius: '4px',
+                                                                        padding: '6px',
+                                                                        color: '#b9bbbe',
+                                                                        cursor: 'pointer',
+                                                                        fontSize: '16px'
+                                                                    }}
+                                                                    onMouseOver={(e) => {
+                                                                        e.target.style.backgroundColor = '#ed4245';
+                                                                        e.target.style.color = '#ffffff';
+                                                                    }}
+                                                                    onMouseOut={(e) => {
+                                                                        e.target.style.backgroundColor = 'transparent';
+                                                                        e.target.style.color = '#b9bbbe';
+                                                                    }}
+                                                                    title="削除"
+                                                                >
+                                                                    🗑️
+                                                                </button>
+                                                            </>
+                                                        )}
+
+                                                        <button
+                                                            onClick={() => addReaction(msg.id, user.uid, '👍')}
+                                                            style={{
+                                                                backgroundColor: 'transparent',
+                                                                border: 'none',
+                                                                borderRadius: '4px',
+                                                                padding: '6px',
+                                                                color: '#b9bbbe',
+                                                                cursor: 'pointer',
+                                                                fontSize: '16px'
+                                                            }}
+                                                            onMouseOver={(e) => {
+                                                                e.target.style.backgroundColor = '#40444b';
+                                                                e.target.style.color = '#dcddde';
+                                                            }}
+                                                            onMouseOut={(e) => {
+                                                                e.target.style.backgroundColor = 'transparent';
+                                                                e.target.style.color = '#b9bbbe';
+                                                            }}
+                                                            title="いいね"
+                                                        >
+                                                            👍
+                                                        </button>
                                                     </div>
                                                 )}
                                             </div>
-                                            
-                                            {/* メッセージボタン */}
-                                            {msg.userId === user?.uid && (
-                                                <div className="message-buttons" style={{
-                                                    position: 'absolute',
-                                                    right: '20px',
-                                                    top: '8px',
-                                                    display: 'flex',
-                                                    gap: '4px',
-                                                    opacity: '0',
-                                                    transition: 'opacity 0.2s'
-                                                }}>
-                                                    <button
-                                                        onClick={() => {
-                                                            setEditingMessage(msg);
-                                                            setInput(msg.content);
-                                                        }}
-                                                        style={{
-                                                            backgroundColor: '#40444b',
-                                                            border: 'none',
-                                                            borderRadius: '4px',
-                                                            padding: '4px',
-                                                            color: '#dcddde',
-                                                            cursor: 'pointer'
-                                                        }}
-                                                    >
-                                                        ✏️
-                                                    </button>
-                                                    <button
-                                                        onClick={() => deleteMessage(msg.id)}
-                                                        style={{
-                                                            backgroundColor: '#40444b',
-                                                            border: 'none',
-                                                            borderRadius: '4px',
-                                                            padding: '4px',
-                                                            color: '#dcddde',
-                                                            cursor: 'pointer'
-                                                        }}
-                                                    >
-                                                        🗑️
-                                                    </button>
-                                                    <button
-                                                        onClick={() => setReplyingTo(msg)}
-                                                        style={{
-                                                            backgroundColor: '#40444b',
-                                                            border: 'none',
-                                                            borderRadius: '4px',
-                                                            padding: '4px',
-                                                            color: '#dcddde',
-                                                            cursor: 'pointer'
-                                                        }}
-                                                    >
-                                                        💬
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleReaction(msg.id, '👍')}
-                                                        style={{
-                                                            backgroundColor: '#40444b',
-                                                            border: 'none',
-                                                            borderRadius: '4px',
-                                                            padding: '4px',
-                                                            color: '#dcddde',
-                                                            cursor: 'pointer'
-                                                        }}
-                                                    >
-                                                        👍
-                                                    </button>
-                                                </div>
-                                            )}
                                         </div>
-                                    </div>
-                                );
-                            })}
+                                    );
+                                })}
                             <div ref={messagesEndRef} />
                         </div>
 
@@ -690,7 +834,7 @@ export default function ChatPage() {
                                     </button>
                                 </div>
                             )}
-                            
+
                             {/* 画像プレビュー */}
                             {imageAttachment && (
                                 <div style={{
@@ -730,7 +874,7 @@ export default function ChatPage() {
                                     </button>
                                 </div>
                             )}
-                            
+
                             <div style={{
                                 backgroundColor: '#40444b',
                                 borderRadius: '8px',
@@ -764,7 +908,7 @@ export default function ChatPage() {
                                     }}
                                     rows={1}
                                 />
-                                
+
                                 {hasPermission(userPermissions, DEFAULT_PERMISSIONS.ATTACH_FILES) && (
                                     <button
                                         onClick={() => setShowImageUploader(true)}
@@ -785,7 +929,7 @@ export default function ChatPage() {
                                         📎
                                     </button>
                                 )}
-                                
+
                                 <button
                                     onClick={handleSendMessage}
                                     disabled={!input.trim() && !imageAttachment}
@@ -809,7 +953,7 @@ export default function ChatPage() {
                         </div>
                     </>
                 )}
-                
+
                 {/* メンバーリストモーダル */}
                 {showMemberList && (
                     <MemberList
@@ -818,7 +962,7 @@ export default function ChatPage() {
                         onClose={() => setShowMemberList(false)}
                     />
                 )}
-                
+
                 {/* 招待モーダル */}
                 {showInviteModal && (
                     <div style={{
@@ -848,7 +992,7 @@ export default function ChatPage() {
                             }}>
                                 ユーザーを招待
                             </h2>
-                            
+
                             <input
                                 type="email"
                                 value={inviteEmail}
@@ -866,7 +1010,7 @@ export default function ChatPage() {
                                     boxSizing: 'border-box'
                                 }}
                             />
-                            
+
                             <div style={{
                                 display: 'flex',
                                 justifyContent: 'flex-end',
@@ -908,7 +1052,7 @@ export default function ChatPage() {
                         </div>
                     </div>
                 )}
-                
+
                 {/* ロール管理モーダル */}
                 {showRoleManager && (
                     <RoleManager
@@ -917,7 +1061,7 @@ export default function ChatPage() {
                         onClose={() => setShowRoleManager(false)}
                     />
                 )}
-                
+
                 {/* 画像アップロードモーダル */}
                 {showImageUploader && (
                     <div style={{
@@ -966,13 +1110,13 @@ export default function ChatPage() {
                                     ✕
                                 </button>
                             </div>
-                            
+
                             <ImageUploader onImageUploaded={handleImageUpload} />
                         </div>
                     </div>
                 )}
             </div>
-            
+
             {/* サーバー招待通知 */}
             <ServerInvites user={user} />
         </div>

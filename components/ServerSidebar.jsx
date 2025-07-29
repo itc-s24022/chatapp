@@ -1,9 +1,12 @@
 
 import { useState } from 'react';
+import ImageUploader from './ImageUploader';
 
-export default function ServerSidebar({ servers, currentServer, onServerSelect, onCreateServer }) {
+export default function ServerSidebar({ servers, currentServer, onServerSelect, onCreateServer, onDeleteServer, onUpdateServerIcon, currentUser }) {
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [serverName, setServerName] = useState('');
+    const [showServerMenu, setShowServerMenu] = useState(null);
+    const [showImageUploader, setShowImageUploader] = useState(null);
 
     const handleCreateServer = () => {
         if (!serverName.trim()) return;
@@ -64,49 +67,120 @@ export default function ServerSidebar({ servers, currentServer, onServerSelect, 
 
             {/* サーバーリスト */}
             {servers.map(server => (
-                <div key={server.id} style={{
-                    width: '48px',
-                    height: '48px',
-                    backgroundColor: currentServer === server.id ? '#5865f2' : '#36393f',
-                    borderRadius: currentServer === server.id ? '16px' : '24px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease',
-                    color: 'white',
-                    fontSize: '16px',
-                    fontWeight: '600',
-                    position: 'relative'
-                }}
-                onClick={() => onServerSelect(server.id)}
-                onMouseOver={(e) => {
-                    if (currentServer !== server.id) {
-                        e.target.style.borderRadius = '16px';
-                        e.target.style.backgroundColor = '#5865f2';
-                    }
-                }}
-                onMouseOut={(e) => {
-                    if (currentServer !== server.id) {
-                        e.target.style.borderRadius = '24px';
-                        e.target.style.backgroundColor = '#36393f';
-                    }
-                }}
-                title={server.name}>
-                    {server.name.charAt(0).toUpperCase()}
-                    
-                    {/* アクティブインジケーター */}
-                    {currentServer === server.id && (
+                <div key={server.id} style={{ position: 'relative' }}>
+                    <div style={{
+                        width: '48px',
+                        height: '48px',
+                        backgroundColor: currentServer === server.id ? '#5865f2' : '#36393f',
+                        borderRadius: currentServer === server.id ? '16px' : '24px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                        color: 'white',
+                        fontSize: '16px',
+                        fontWeight: '600',
+                        position: 'relative',
+                        backgroundImage: server.icon ? `url(${server.icon})` : 'none',
+                        backgroundSize: 'cover',
+                        backgroundPosition: 'center'
+                    }}
+                    onClick={() => onServerSelect(server.id)}
+                    onContextMenu={(e) => {
+                        e.preventDefault();
+                        setShowServerMenu(showServerMenu === server.id ? null : server.id);
+                    }}
+                    onMouseOver={(e) => {
+                        if (currentServer !== server.id) {
+                            e.target.style.borderRadius = '16px';
+                            e.target.style.backgroundColor = '#5865f2';
+                        }
+                    }}
+                    onMouseOut={(e) => {
+                        if (currentServer !== server.id) {
+                            e.target.style.borderRadius = '24px';
+                            e.target.style.backgroundColor = '#36393f';
+                        }
+                    }}
+                    title={server.name}>
+                        {!server.icon && server.name.charAt(0).toUpperCase()}
+                        
+                        {/* アクティブインジケーター */}
+                        {currentServer === server.id && (
+                            <div style={{
+                                position: 'absolute',
+                                left: '-8px',
+                                top: '50%',
+                                transform: 'translateY(-50%)',
+                                width: '4px',
+                                height: '40px',
+                                backgroundColor: '#ffffff',
+                                borderRadius: '0 2px 2px 0'
+                            }} />
+                        )}
+                    </div>
+
+                    {/* サーバーメニュー */}
+                    {showServerMenu === server.id && (
                         <div style={{
                             position: 'absolute',
-                            left: '-8px',
-                            top: '50%',
-                            transform: 'translateY(-50%)',
-                            width: '4px',
-                            height: '40px',
-                            backgroundColor: '#ffffff',
-                            borderRadius: '0 2px 2px 0'
-                        }} />
+                            left: '60px',
+                            top: '0px',
+                            backgroundColor: '#18191c',
+                            borderRadius: '4px',
+                            padding: '8px 0',
+                            minWidth: '150px',
+                            boxShadow: '0 8px 16px rgba(0, 0, 0, 0.24)',
+                            zIndex: 1000,
+                            border: '1px solid #40444b'
+                        }}>
+                            <button
+                                onClick={() => {
+                                    setShowImageUploader(server.id);
+                                    setShowServerMenu(null);
+                                }}
+                                style={{
+                                    width: '100%',
+                                    padding: '8px 12px',
+                                    backgroundColor: 'transparent',
+                                    border: 'none',
+                                    color: '#dcddde',
+                                    textAlign: 'left',
+                                    cursor: 'pointer',
+                                    fontSize: '14px'
+                                }}
+                                onMouseOver={(e) => e.target.style.backgroundColor = '#40444b'}
+                                onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}
+                            >
+                                アイコン変更
+                            </button>
+                            
+                            {server.ownerId === currentUser?.uid && (
+                                <button
+                                    onClick={() => {
+                                        if (confirm(`サーバー "${server.name}" を削除しますか？この操作は取り消せません。`)) {
+                                            onDeleteServer(server.id);
+                                        }
+                                        setShowServerMenu(null);
+                                    }}
+                                    style={{
+                                        width: '100%',
+                                        padding: '8px 12px',
+                                        backgroundColor: 'transparent',
+                                        border: 'none',
+                                        color: '#ed4245',
+                                        textAlign: 'left',
+                                        cursor: 'pointer',
+                                        fontSize: '14px'
+                                    }}
+                                    onMouseOver={(e) => e.target.style.backgroundColor = '#40444b'}
+                                    onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}
+                                >
+                                    サーバー削除
+                                </button>
+                            )}
+                        </div>
                     )}
                 </div>
             ))}
@@ -253,6 +327,32 @@ export default function ServerSidebar({ servers, currentServer, onServerSelect, 
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* アイコンアップローダー */}
+            {showImageUploader && (
+                <ImageUploader
+                    onUpload={(uploadedImage) => {
+                        onUpdateServerIcon(showImageUploader, uploadedImage.id);
+                        setShowImageUploader(null);
+                    }}
+                    onClose={() => setShowImageUploader(null)}
+                />
+            )}
+
+            {/* メニュー外クリックで閉じる */}
+            {showServerMenu && (
+                <div
+                    style={{
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        zIndex: 999
+                    }}
+                    onClick={() => setShowServerMenu(null)}
+                />
             )}
         </div>
     );
