@@ -1,17 +1,16 @@
-
 import { useState, useEffect } from 'react';
 import { 
     getServerRoles, 
     createServerRole, 
     updateServerRole, 
-    deleteServerRole,
+    deleteServerRole, 
     DEFAULT_PERMISSIONS 
 } from '../lib/firestore';
 
 export default function RoleManager({ server, currentUser, onClose }) {
     const [roles, setRoles] = useState([]);
+    const [showCreateRole, setShowCreateRole] = useState(false);
     const [editingRole, setEditingRole] = useState(null);
-    const [showCreateModal, setShowCreateModal] = useState(false);
     const [newRole, setNewRole] = useState({
         name: '',
         color: '#99aab5',
@@ -19,41 +18,89 @@ export default function RoleManager({ server, currentUser, onClose }) {
         position: 1
     });
 
+    const permissionCategories = {
+        '一般管理': [
+            { key: DEFAULT_PERMISSIONS.ADMINISTRATOR, label: '管理者', description: '全権限を付与' },
+            { key: DEFAULT_PERMISSIONS.MANAGE_SERVER, label: 'サーバー管理', description: 'サーバー設定の変更' },
+            { key: DEFAULT_PERMISSIONS.MANAGE_ROLES, label: 'ロール管理', description: 'ロールの編集・削除' },
+            { key: DEFAULT_PERMISSIONS.MANAGE_CHANNELS, label: 'チャンネル管理', description: 'チャンネルの作成・削除' },
+        ],
+        'メッセージ・チャット操作': [
+            { key: DEFAULT_PERMISSIONS.SEND_MESSAGES, label: 'メッセージ送信', description: 'チャンネルへのメッセージ投稿' },
+            { key: DEFAULT_PERMISSIONS.EDIT_DELETE_MESSAGES, label: 'メッセージ編集・削除', description: '自分または他人のメッセージの編集・削除' },
+            { key: DEFAULT_PERMISSIONS.PIN_MESSAGES, label: 'メッセージピン留め', description: 'メッセージをピン留め可能' },
+            { key: DEFAULT_PERMISSIONS.EMBED_LINKS, label: '埋め込みリンク送信', description: 'リンクカード表示許可' },
+            { key: DEFAULT_PERMISSIONS.ATTACH_FILES, label: 'ファイル添付', description: '画像・ファイルの添付' },
+            { key: DEFAULT_PERMISSIONS.MENTION_EVERYONE, label: '@everyone使用', description: '全体メンションの使用' },
+            { key: DEFAULT_PERMISSIONS.USE_EXTERNAL_EMOJIS, label: '外部絵文字使用', description: '他サーバーの絵文字を使用' },
+        ],
+        'メンバー管理': [
+            { key: DEFAULT_PERMISSIONS.VIEW_MEMBERS, label: 'メンバー表示', description: 'メンバー一覧の表示' },
+            { key: DEFAULT_PERMISSIONS.ADD_FRIENDS, label: 'フレンド追加', description: 'フレンド機能の使用' },
+            { key: DEFAULT_PERMISSIONS.MANAGE_MEMBERS, label: 'メンバー管理', description: 'キック・バンなどの管理' },
+            { key: DEFAULT_PERMISSIONS.ASSIGN_ROLES, label: 'ロール付与', description: '他人にロールを割り当て' },
+        ]
+    };
+
     useEffect(() => {
-        if (!server?.id) return;
+        if (!server) return;
 
         const unsubscribe = getServerRoles(server.id, (snapshot) => {
             const roleList = snapshot.docs.map(doc => ({
                 id: doc.id,
                 ...doc.data()
             }));
-            setRoles(roleList);
+            setRoles(roleList.sort((a, b) => b.position - a.position));
         });
 
         return () => unsubscribe();
-    }, [server?.id]);
+    }, [server]);
 
     const handleCreateRole = async () => {
         if (!newRole.name.trim()) return;
-        
-        await createServerRole(server.id, newRole);
-        setNewRole({
-            name: '',
-            color: '#99aab5',
-            permissions: [],
-            position: 1
-        });
-        setShowCreateModal(false);
+
+        try {
+            await createServerRole(server.id, {
+                ...newRole,
+                canBeDeleted: true,
+                isDefault: false
+            });
+            setShowCreateRole(false);
+            setNewRole({
+                name: '',
+                color: '#99aab5',
+                permissions: [],
+                position: 1
+            });
+        } catch (error) {
+            console.error('ロール作成エラー:', error);
+            alert('ロール作成に失敗しました');
+        }
     };
 
-    const handleUpdateRole = async (roleId, roleData) => {
-        await updateServerRole(roleId, roleData);
-        setEditingRole(null);
+    const handleUpdateRole = async (roleId, updatedData) => {
+        try {
+            await updateServerRole(roleId, updatedData);
+            setEditingRole(null);
+        } catch (error) {
+            console.error('ロール更新エラー:', error);
+            alert('ロール更新に失敗しました');
+        }
     };
 
-    const handleDeleteRole = async (roleId) => {
+    const handleDeleteRole = async (roleId, canBeDeleted) => {
+        if (!canBeDeleted) {
+            alert('このロールは削除できません');
+            return;
+        }
+
         if (confirm('このロールを削除しますか？')) {
-            await deleteServerRole(roleId);
+            try {
+                await deleteServerRole(roleId);
+            } catch (error) {
+                console.error('ロール削除エラー:', error);
+                alert('ロール削除に失敗しました');
+            }
         }
     };
 
@@ -62,7 +109,7 @@ export default function RoleManager({ server, currentUser, onClose }) {
             const updatedPermissions = editingRole.permissions.includes(permission)
                 ? editingRole.permissions.filter(p => p !== permission)
                 : [...editingRole.permissions, permission];
-            
+
             setEditingRole({
                 ...editingRole,
                 permissions: updatedPermissions
@@ -71,7 +118,7 @@ export default function RoleManager({ server, currentUser, onClose }) {
             const updatedPermissions = newRole.permissions.includes(permission)
                 ? newRole.permissions.filter(p => p !== permission)
                 : [...newRole.permissions, permission];
-            
+
             setNewRole({
                 ...newRole,
                 permissions: updatedPermissions
@@ -140,7 +187,7 @@ export default function RoleManager({ server, currentUser, onClose }) {
                     </h2>
                     <div style={{ display: 'flex', gap: '12px' }}>
                         <button
-                            onClick={() => setShowCreateModal(true)}
+                            onClick={() => setShowCreateRole(true)}
                             style={{
                                 backgroundColor: '#5865f2',
                                 color: 'white',
@@ -197,7 +244,7 @@ export default function RoleManager({ server, currentUser, onClose }) {
                                         {role.name}
                                     </span>
                                 </div>
-                                
+
                                 {role.canBeDeleted && (
                                     <div style={{ display: 'flex', gap: '8px' }}>
                                         <button
@@ -215,7 +262,7 @@ export default function RoleManager({ server, currentUser, onClose }) {
                                             編集
                                         </button>
                                         <button
-                                            onClick={() => handleDeleteRole(role.id)}
+                                            onClick={() => handleDeleteRole(role.id, role.canBeDeleted)}
                                             style={{
                                                 backgroundColor: '#ed4245',
                                                 color: 'white',
@@ -231,7 +278,7 @@ export default function RoleManager({ server, currentUser, onClose }) {
                                     </div>
                                 )}
                             </div>
-                            
+
                             <div style={{
                                 display: 'flex',
                                 flexWrap: 'wrap',
@@ -257,7 +304,7 @@ export default function RoleManager({ server, currentUser, onClose }) {
                 </div>
 
                 {/* 新規ロール作成モーダル */}
-                {showCreateModal && (
+                {showCreateRole && (
                     <div style={{
                         position: 'fixed',
                         top: 0,
@@ -280,7 +327,7 @@ export default function RoleManager({ server, currentUser, onClose }) {
                             overflow: 'auto'
                         }}>
                             <h3 style={{ color: '#ffffff', marginBottom: '16px' }}>新しいロール</h3>
-                            
+
                             <div style={{ marginBottom: '16px' }}>
                                 <label style={{ color: '#b9bbbe', fontSize: '14px', marginBottom: '4px', display: 'block' }}>
                                     ロール名
@@ -301,7 +348,7 @@ export default function RoleManager({ server, currentUser, onClose }) {
                                     }}
                                 />
                             </div>
-                            
+
                             <div style={{ marginBottom: '16px' }}>
                                 <label style={{ color: '#b9bbbe', fontSize: '14px', marginBottom: '4px', display: 'block' }}>
                                     色
@@ -319,7 +366,7 @@ export default function RoleManager({ server, currentUser, onClose }) {
                                     }}
                                 />
                             </div>
-                            
+
                             <div style={{ marginBottom: '24px' }}>
                                 <label style={{ color: '#b9bbbe', fontSize: '14px', marginBottom: '8px', display: 'block' }}>
                                     権限
@@ -351,14 +398,14 @@ export default function RoleManager({ server, currentUser, onClose }) {
                                     ))}
                                 </div>
                             </div>
-                            
+
                             <div style={{
                                 display: 'flex',
                                 justifyContent: 'flex-end',
                                 gap: '12px'
                             }}>
                                 <button
-                                    onClick={() => setShowCreateModal(false)}
+                                    onClick={() => setShowCreateRole(false)}
                                     style={{
                                         backgroundColor: 'transparent',
                                         border: 'none',
@@ -414,7 +461,7 @@ export default function RoleManager({ server, currentUser, onClose }) {
                             overflow: 'auto'
                         }}>
                             <h3 style={{ color: '#ffffff', marginBottom: '16px' }}>ロール編集</h3>
-                            
+
                             <div style={{ marginBottom: '16px' }}>
                                 <label style={{ color: '#b9bbbe', fontSize: '14px', marginBottom: '4px', display: 'block' }}>
                                     ロール名
@@ -435,7 +482,7 @@ export default function RoleManager({ server, currentUser, onClose }) {
                                     }}
                                 />
                             </div>
-                            
+
                             <div style={{ marginBottom: '16px' }}>
                                 <label style={{ color: '#b9bbbe', fontSize: '14px', marginBottom: '4px', display: 'block' }}>
                                     色
@@ -453,7 +500,7 @@ export default function RoleManager({ server, currentUser, onClose }) {
                                     }}
                                 />
                             </div>
-                            
+
                             <div style={{ marginBottom: '24px' }}>
                                 <label style={{ color: '#b9bbbe', fontSize: '14px', marginBottom: '8px', display: 'block' }}>
                                     権限
@@ -485,7 +532,7 @@ export default function RoleManager({ server, currentUser, onClose }) {
                                     ))}
                                 </div>
                             </div>
-                            
+
                             <div style={{
                                 display: 'flex',
                                 justifyContent: 'flex-end',
