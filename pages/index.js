@@ -15,10 +15,15 @@ import {
     addReaction,
     removeReaction,
     getUserDMs,
-    createDMChannel
+    createDMChannel,
+    sendFriendRequest,
+    getServerMembers,
+    addMemberToServer
 } from "../lib/firestore";
 import ServerSidebar from "../components/ServerSidebar";
 import ChannelSidebar from "../components/ChannelSidebar";
+import FriendsList from "../components/FriendsList";
+import MemberList from "../components/MemberList";
 
 export default function ChatPage() {
     const [user, setUser] = useState(null);
@@ -31,6 +36,9 @@ export default function ChatPage() {
     const [editingMessage, setEditingMessage] = useState(null);
     const [replyingTo, setReplyingTo] = useState(null);
     const [dmChannels, setDmChannels] = useState([]);
+    const [showMemberList, setShowMemberList] = useState(false);
+    const [showInviteModal, setShowInviteModal] = useState(false);
+    const [inviteEmail, setInviteEmail] = useState("");
     const messagesEndRef = useRef(null);
     const router = useRouter();
 
@@ -141,7 +149,7 @@ export default function ChatPage() {
 
     const handleServerCreate = async (serverName) => {
         if (!user) return;
-        await createServer(serverName, user.uid);
+        await createServer(serverName, user.uid, user.displayName || "匿名");
     };
 
     const handleChannelCreate = async (channelData) => {
@@ -164,6 +172,20 @@ export default function ChatPage() {
             await removeReaction(messageId, user.uid, emoji);
         } else {
             await addReaction(messageId, user.uid, emoji);
+        }
+    };
+
+    const handleInviteUser = async () => {
+        if (!inviteEmail.trim() || !currentServer) return;
+        
+        try {
+            // ここでユーザー検索とサーバー招待の処理
+            alert('招待機能は開発中です');
+            setInviteEmail('');
+            setShowInviteModal(false);
+        } catch (error) {
+            console.error('招待エラー:', error);
+            alert('招待に失敗しました');
         }
     };
 
@@ -215,8 +237,10 @@ export default function ChatPage() {
                 onCreateServer={handleServerCreate}
             />
 
-            {/* チャンネルサイドバー */}
-            {currentServer && (
+            {/* チャンネルサイドバー / フレンドリスト */}
+            {currentServer?.id === 'dm' ? (
+                <FriendsList user={user} />
+            ) : currentServer ? (
                 <ChannelSidebar
                     server={currentServer}
                     channels={channels}
@@ -228,7 +252,7 @@ export default function ChatPage() {
                     onCreateChannel={handleChannelCreate}
                     user={user}
                 />
-            )}
+            ) : null}
 
             {/* メインチャットエリア */}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
@@ -250,6 +274,39 @@ export default function ChatPage() {
                         }}>
                             {currentChannel ? `# ${currentChannel.name}` : 'チャンネルを選択してください'}
                         </h2>
+                        
+                        {currentServer && currentServer.id !== 'dm' && (
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                                <button
+                                    onClick={() => setShowMemberList(true)}
+                                    style={{
+                                        backgroundColor: '#40444b',
+                                        color: '#dcddde',
+                                        border: 'none',
+                                        borderRadius: '4px',
+                                        padding: '6px 12px',
+                                        cursor: 'pointer',
+                                        fontSize: '14px'
+                                    }}
+                                >
+                                    👥 メンバー
+                                </button>
+                                <button
+                                    onClick={() => setShowInviteModal(true)}
+                                    style={{
+                                        backgroundColor: '#40444b',
+                                        color: '#dcddde',
+                                        border: 'none',
+                                        borderRadius: '4px',
+                                        padding: '6px 12px',
+                                        cursor: 'pointer',
+                                        fontSize: '14px'
+                                    }}
+                                >
+                                    ➕ 招待
+                                </button>
+                            </div>
+                        )}
                     </div>
                     
                     {user && (
@@ -586,6 +643,105 @@ export default function ChatPage() {
                             </div>
                         </div>
                     </>
+                )}
+                
+                {/* メンバーリストモーダル */}
+                {showMemberList && (
+                    <MemberList
+                        server={currentServer}
+                        currentUser={user}
+                        onClose={() => setShowMemberList(false)}
+                    />
+                )}
+                
+                {/* 招待モーダル */}
+                {showInviteModal && (
+                    <div style={{
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        backgroundColor: 'rgba(0, 0, 0, 0.85)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        zIndex: 1000
+                    }}>
+                        <div style={{
+                            backgroundColor: '#36393f',
+                            borderRadius: '8px',
+                            padding: '24px',
+                            width: '400px',
+                            maxWidth: '90vw'
+                        }}>
+                            <h2 style={{
+                                color: '#ffffff',
+                                fontSize: '20px',
+                                fontWeight: '600',
+                                margin: '0 0 16px 0'
+                            }}>
+                                ユーザーを招待
+                            </h2>
+                            
+                            <input
+                                type="email"
+                                value={inviteEmail}
+                                onChange={(e) => setInviteEmail(e.target.value)}
+                                placeholder="メールアドレス"
+                                style={{
+                                    width: '100%',
+                                    padding: '12px',
+                                    backgroundColor: '#40444b',
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    color: '#dcddde',
+                                    fontSize: '16px',
+                                    marginBottom: '16px',
+                                    boxSizing: 'border-box'
+                                }}
+                            />
+                            
+                            <div style={{
+                                display: 'flex',
+                                justifyContent: 'flex-end',
+                                gap: '12px'
+                            }}>
+                                <button
+                                    onClick={() => {
+                                        setShowInviteModal(false);
+                                        setInviteEmail('');
+                                    }}
+                                    style={{
+                                        backgroundColor: 'transparent',
+                                        border: 'none',
+                                        color: '#ffffff',
+                                        padding: '10px 16px',
+                                        borderRadius: '4px',
+                                        cursor: 'pointer',
+                                        fontSize: '14px'
+                                    }}
+                                >
+                                    キャンセル
+                                </button>
+                                <button
+                                    onClick={handleInviteUser}
+                                    disabled={!inviteEmail.trim()}
+                                    style={{
+                                        backgroundColor: inviteEmail.trim() ? '#5865f2' : '#4f545c',
+                                        border: 'none',
+                                        color: 'white',
+                                        padding: '10px 16px',
+                                        borderRadius: '4px',
+                                        cursor: inviteEmail.trim() ? 'pointer' : 'not-allowed',
+                                        fontSize: '14px'
+                                    }}
+                                >
+                                    招待
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 )}
             </div>
         </div>
