@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import {
   signInWithPopup,
@@ -7,6 +6,7 @@ import {
   onAuthStateChanged,
 } from "firebase/auth";
 import { useRouter } from "next/router";
+import Link from "next/link"; // ← 追加
 import { auth } from "../lib/firebase";
 
 export default function Login() {
@@ -220,17 +220,12 @@ export default function Login() {
           margin: '24px 0 0 0'
         }}>
           アカウントが必要ですか？{' '}
-          <a
-            href="/signup"
-            style={{
-              color: '#00aff4',
-              textDecoration: 'none'
-            }}
-            onMouseOver={(e) => e.target.style.textDecoration = 'underline'}
-            onMouseOut={(e) => e.target.style.textDecoration = 'none'}
-          >
+          <Link href="/signup" style={{
+            color: '#00aff4',
+            textDecoration: 'none'
+          }}>
             新規登録
-          </a>
+          </Link>
         </p>
       </div>
     </div>
