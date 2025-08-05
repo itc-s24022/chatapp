@@ -508,342 +508,361 @@ export default function ChatPage() {
                             padding: '20px'
                         }}>
                             {messages.map((msg, index) => {
-                                    const prevMsg = messages[index - 1];
-                                    const showDate = !prevMsg || formatDate(msg.timestamp) !== formatDate(prevMsg.timestamp);
+                                const prevMsg = messages[index - 1];
+                                const showDate = !prevMsg || formatDate(msg.timestamp) !== formatDate(prevMsg.timestamp);
+                                
+                                // 自分のメッセージかどうか判定
+                                const isMyMessage = msg.userId === user.uid;
 
-                                    // 連続メッセージかチェック（同じユーザーが5分以内に投稿）
-                                    const isConsecutive = prevMsg && 
-                                        prevMsg.userId === msg.userId && 
-                                        msg.timestamp && prevMsg.timestamp &&
-                                        (msg.timestamp.toDate() - prevMsg.timestamp.toDate()) < 5 * 60 * 1000;
+                                // 連続メッセージかチェック（同じユーザーが5分以内に投稿）
+                                const isConsecutive = prevMsg && 
+                                    prevMsg.userId === msg.userId && 
+                                    msg.timestamp && prevMsg.timestamp &&
+                                    (msg.timestamp.toDate() - prevMsg.timestamp.toDate()) < 5 * 60 * 1000;
 
-                                    return (
-                                        <div key={msg.id}>
-                                            {showDate && (
+                                return (
+                                    <div key={msg.id}>
+                                        {showDate && (
+                                            <div style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                margin: '24px 16px 8px',
+                                                gap: '12px'
+                                            }}>
+                                                <div style={{
+                                                    height: '1px',
+                                                    backgroundColor: '#40444b',
+                                                    flex: 1
+                                                }} />
+                                                <span style={{
+                                                    color: '#72767d',
+                                                    fontSize: '12px',
+                                                    fontWeight: '600',
+                                                    backgroundColor: '#36393f',
+                                                    padding: '2px 8px',
+                                                    borderRadius: '8px'
+                                                }}>
+                                                    {formatDate(msg.timestamp)}
+                                                </span>
+                                                <div style={{
+                                                    height: '1px',
+                                                    backgroundColor: '#40444b',
+                                                    flex: 1
+                                                }} />
+                                            </div>
+                                        )}
+
+                                        <div style={{
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            alignItems: isMyMessage ? 'flex-end' : 'flex-start',
+                                            margin: isConsecutive ? '2px 16px' : '8px 16px',
+                                            position: 'relative'
+                                        }}
+                                        onMouseEnter={() => setHoveredMessage(msg.id)}
+                                        onMouseLeave={() => setHoveredMessage(null)}>
+
+                                            {/* ユーザー名表示（他人のメッセージで初回のみ） */}
+                                            {!isMyMessage && !isConsecutive && (
                                                 <div style={{
                                                     display: 'flex',
                                                     alignItems: 'center',
-                                                    margin: '24px 16px 8px',
-                                                    gap: '12px'
+                                                    gap: '8px',
+                                                    marginBottom: '4px',
+                                                    marginLeft: '12px'
                                                 }}>
                                                     <div style={{
-                                                        height: '1px',
-                                                        backgroundColor: '#40444b',
-                                                        flex: 1
-                                                    }} />
-                                                    <span style={{
-                                                        color: '#72767d',
-                                                        fontSize: '12px',
-                                                        fontWeight: '600',
-                                                        backgroundColor: '#36393f',
-                                                        padding: '2px 8px',
-                                                        borderRadius: '8px'
-                                                    }}>
-                                                        {formatDate(msg.timestamp)}
-                                                    </span>
-                                                    <div style={{
-                                                        height: '1px',
-                                                        backgroundColor: '#40444b',
-                                                        flex: 1
-                                                    }} />
-                                                </div>
-                                            )}
-
-                                            <div style={{
-                                                padding: isConsecutive ? '1px 16px 1px 72px' : '8px 16px',
-                                                display: 'flex',
-                                                gap: '12px',
-                                                alignItems: 'flex-start',
-                                                position: 'relative'
-                                            }}
-                                            onMouseEnter={() => setHoveredMessage(msg.id)}
-                                            onMouseLeave={() => setHoveredMessage(null)}>
-
-                                                {/* アバター */}
-                                                {!isConsecutive && (
-                                                    <div style={{
-                                                        width: '40px',
-                                                        height: '40px',
+                                                        width: '24px',
+                                                        height: '24px',
                                                         borderRadius: '50%',
                                                         backgroundColor: '#5865f2',
                                                         display: 'flex',
                                                         alignItems: 'center',
                                                         justifyContent: 'center',
                                                         color: 'white',
-                                                        fontSize: '16px',
-                                                        fontWeight: '600',
-                                                        flexShrink: 0
+                                                        fontSize: '12px',
+                                                        fontWeight: '600'
                                                     }}>
                                                         {(msg.userName || '匿名').charAt(0).toUpperCase()}
                                                     </div>
-                                                )}
-
-                                                {/* 連続メッセージの時刻表示 */}
-                                                {isConsecutive && (
-                                                    <div style={{
-                                                        position: 'absolute',
-                                                        left: '16px',
-                                                        top: '8px',
-                                                        width: '40px',
-                                                        textAlign: 'center',
+                                                    <span style={{
+                                                        fontWeight: '600',
+                                                        color: '#ffffff',
+                                                        fontSize: '14px'
+                                                    }}>
+                                                        {msg.userName || '匿名'}
+                                                    </span>
+                                                    <span style={{
                                                         fontSize: '11px',
-                                                        color: '#72767d',
-                                                        opacity: 0,
-                                                        transition: 'opacity 0.1s'
-                                                    }}
-                                                    onMouseEnter={(e) => e.target.style.opacity = 1}
-                                                    onMouseLeave={(e) => e.target.style.opacity = 0}>
+                                                        color: '#72767d'
+                                                    }}>
                                                         {formatTime(msg.timestamp)}
-                                                    </div>
-                                                )}
+                                                    </span>
+                                                </div>
+                                            )}
 
-                                                <div style={{ flex: 1 }}>
-                                                    {/* ユーザー名と時間（初回メッセージのみ） */}
-                                                    {!isConsecutive && (
-                                                        <div style={{
-                                                            display: 'flex',
-                                                            alignItems: 'baseline',
-                                                            gap: '8px',
-                                                            marginBottom: '2px'
-                                                        }}>
-                                                            <span style={{
-                                                                fontWeight: '600',
-                                                                color: '#ffffff',
-                                                                fontSize: '16px'
-                                                            }}>
-                                                                {msg.userName || '匿名'}
-                                                            </span>
-                                                            <span style={{
-                                                                fontSize: '12px',
-                                                                color: '#72767d'
-                                                            }}>
-                                                                {formatTime(msg.timestamp)}
-                                                            </span>
-                                                            {msg.edited && (
-                                                                <span style={{
-                                                                    fontSize: '10px',
-                                                                    color: '#72767d',
-                                                                    fontStyle: 'italic'
-                                                                }}>
-                                                                    (編集済み)
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                    )}
-
-                                                    {/* 返信先表示 */}
-                                                    {msg.replyTo && (
+                                            {/* メッセージバブル */}
+                                            <div style={{
+                                                maxWidth: '70%',
+                                                minWidth: '60px',
+                                                position: 'relative'
+                                            }}>
+                                                {/* 返信先表示 */}
+                                                {msg.replyTo && (
+                                                    <div style={{
+                                                        backgroundColor: isMyMessage ? '#4c5bdb' : '#4f545c',
+                                                        padding: '6px 12px',
+                                                        borderRadius: '12px 12px 4px 4px',
+                                                        marginBottom: '2px',
+                                                        fontSize: '13px',
+                                                        color: '#dcddde',
+                                                        opacity: 0.8,
+                                                        borderLeft: isMyMessage ? '3px solid #ffffff' : '3px solid #5865f2'
+                                                    }}>
                                                         <div style={{
                                                             display: 'flex',
                                                             alignItems: 'center',
-                                                            gap: '4px',
-                                                            marginBottom: '4px',
-                                                            padding: '4px 8px',
-                                                            backgroundColor: '#2f3136',
-                                                            borderRadius: '4px',
-                                                            borderLeft: '4px solid #5865f2',
-                                                            color: '#b9bbbe',
-                                                            fontSize: '13px'
+                                                            gap: '4px'
                                                         }}>
                                                             <span>↳</span>
                                                             <span style={{ fontWeight: '600' }}>返信:</span>
                                                             <span>{msg.replyTo}</span>
                                                         </div>
-                                                    )}
-
-                                                    {/* メッセージ内容 */}
-                                                    <div style={{
-                                                        color: '#dcddde',
-                                                        fontSize: '16px',
-                                                        lineHeight: '1.375',
-                                                        wordWrap: 'break-word',
-                                                        marginBottom: msg.attachments?.length ? '8px' : '0'
-                                                    }}>
-                                                        {msg.content}
                                                     </div>
+                                                )}
+
+                                                {/* メインメッセージバブル */}
+                                                <div style={{
+                                                    backgroundColor: isMyMessage ? '#5865f2' : '#40444b',
+                                                    color: isMyMessage ? '#ffffff' : '#dcddde',
+                                                    padding: '12px 16px',
+                                                    borderRadius: isMyMessage ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
+                                                    fontSize: '16px',
+                                                    lineHeight: '1.375',
+                                                    wordWrap: 'break-word',
+                                                    position: 'relative',
+                                                    boxShadow: '0 1px 2px rgba(0,0,0,0.1)'
+                                                }}>
+                                                    {/* メッセージ内容 */}
+                                                    {msg.content && (
+                                                        <div style={{ marginBottom: msg.attachments?.length ? '8px' : '0' }}>
+                                                            {msg.content}
+                                                        </div>
+                                                    )}
 
                                                     {/* 添付ファイル表示 */}
                                                     {msg.attachments && msg.attachments.map((attachment, idx) => (
-                                                        <div key={idx} style={{ marginBottom: '8px' }}>
+                                                        <div key={idx} style={{ marginTop: msg.content ? '8px' : '0' }}>
                                                             {attachment.type === 'image' && (
-                                                                <ImageDisplay imageId={attachment.id} />
+                                                                <div style={{
+                                                                    borderRadius: '12px',
+                                                                    overflow: 'hidden',
+                                                                    maxWidth: '300px'
+                                                                }}>
+                                                                    <ImageDisplay imageId={attachment.id} />
+                                                                </div>
                                                             )}
                                                         </div>
                                                     ))}
 
-                                                    {/* リアクション表示 */}
-                                                    {msg.reactions && Object.keys(msg.reactions).length > 0 && (
+                                                    {/* 編集済み表示 */}
+                                                    {msg.edited && (
                                                         <div style={{
-                                                            display: 'flex',
-                                                            gap: '4px',
+                                                            fontSize: '10px',
+                                                            color: isMyMessage ? 'rgba(255,255,255,0.7)' : '#72767d',
+                                                            fontStyle: 'italic',
                                                             marginTop: '4px',
-                                                            flexWrap: 'wrap'
+                                                            textAlign: 'right'
                                                         }}>
-                                                            {Object.entries(msg.reactions).map(([emoji, users]) => (
-                                                                <button
-                                                                    key={emoji}
-                                                                    onClick={() => {
-                                                                        if (users.includes(user.uid)) {
-                                                                            removeReaction(msg.id, user.uid, emoji);
-                                                                        } else {
-                                                                            addReaction(msg.id, user.uid, emoji);
-                                                                        }
-                                                                    }}
-                                                                    style={{
-                                                                        backgroundColor: users.includes(user.uid) ? '#5865f2' : 'transparent',
-                                                                        border: `1px solid ${users.includes(user.uid) ? '#5865f2' : '#40444b'}`,
-                                                                        borderRadius: '12px',
-                                                                        padding: '4px 8px',
-                                                                        color: '#dcddde',
-                                                                        fontSize: '13px',
-                                                                        cursor: 'pointer',
-                                                                        display: 'flex',
-                                                                        alignItems: 'center',
-                                                                        gap: '4px',
-                                                                        transition: 'all 0.1s ease'
-                                                                    }}
-                                                                    onMouseOver={(e) => {
-                                                                        if (!users.includes(user.uid)) {
-                                                                            e.target.style.backgroundColor = '#40444b';
-                                                                        }
-                                                                    }}
-                                                                    onMouseOut={(e) => {
-                                                                        if (!users.includes(user.uid)) {
-                                                                            e.target.style.backgroundColor = 'transparent';
-                                                                        }
-                                                                    }}
-                                                                >
-                                                                    <span>{emoji}</span>
-                                                                    <span style={{ fontSize: '11px', fontWeight: '600' }}>
-                                                                        {users.length}
-                                                                    </span>
-                                                                </button>
-                                                            ))}
+                                                            編集済み
                                                         </div>
                                                     )}
                                                 </div>
 
-                                                {/* メッセージアクション */}
-                                                {hoveredMessage === msg.id && (
+                                                {/* 時刻表示（自分のメッセージまたは連続メッセージの場合） */}
+                                                {(isMyMessage || isConsecutive) && (
                                                     <div style={{
-                                                        position: 'absolute',
-                                                        top: '-8px',
-                                                        right: '20px',
-                                                        display: 'flex',
-                                                        gap: '2px',
-                                                        backgroundColor: '#2f3136',
-                                                        padding: '4px',
-                                                        borderRadius: '8px',
-                                                        border: '1px solid #40444b',
-                                                        boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+                                                        fontSize: '11px',
+                                                        color: '#72767d',
+                                                        marginTop: '2px',
+                                                        textAlign: isMyMessage ? 'right' : 'left',
+                                                        paddingLeft: isMyMessage ? '0' : '12px',
+                                                        paddingRight: isMyMessage ? '12px' : '0'
                                                     }}>
-                                                        <button
-                                                            onClick={() => setReplyingTo(msg)}
-                                                            style={{
-                                                                backgroundColor: 'transparent',
-                                                                border: 'none',
-                                                                borderRadius: '4px',
-                                                                padding: '6px',
-                                                                color: '#b9bbbe',
-                                                                cursor: 'pointer',
-                                                                fontSize: '16px'
-                                                            }}
-                                                            onMouseOver={(e) => {
-                                                                e.target.style.backgroundColor = '#40444b';
-                                                                e.target.style.color = '#dcddde';
-                                                            }}
-                                                            onMouseOut={(e) => {
-                                                                e.target.style.backgroundColor = 'transparent';
-                                                                e.target.style.color = '#b9bbbe';
-                                                            }}
-                                                            title="返信"
-                                                        >
-                                                            💬
-                                                        </button>
+                                                        {formatTime(msg.timestamp)}
+                                                    </div>
+                                                )}
 
-                                                        {msg.userId === user.uid && (
-                                                            <>
-                                                                <button
-                                                                    onClick={() => {
-                                                                        setEditingMessage(msg);
-                                                                        setInput(msg.content);
-                                                                    }}
-                                                                    style={{
-                                                                        backgroundColor: 'transparent',
-                                                                        border: 'none',
-                                                                        borderRadius: '4px',
-                                                                        padding: '6px',
-                                                                        color: '#b9bbbe',
-                                                                        cursor: 'pointer',
-                                                                        fontSize: '16px'
-                                                                    }}
-                                                                    onMouseOver={(e) => {
-                                                                        e.target.style.backgroundColor = '#40444b';
-                                                                        e.target.style.color = '#dcddde';
-                                                                    }}
-                                                                    onMouseOut={(e) => {
-                                                                        e.target.style.backgroundColor = 'transparent';
-                                                                        e.target.style.color = '#b9bbbe';
-                                                                    }}
-                                                                    title="編集"
-                                                                >
-                                                                    ✏️
-                                                                </button>
-                                                                <button
-                                                                    onClick={() => deleteMessage(msg.id)}
-                                                                    style={{
-                                                                        backgroundColor: 'transparent',
-                                                                        border: 'none',
-                                                                        borderRadius: '4px',
-                                                                        padding: '6px',
-                                                                        color: '#b9bbbe',
-                                                                        cursor: 'pointer',
-                                                                        fontSize: '16px'
-                                                                    }}
-                                                                    onMouseOver={(e) => {
-                                                                        e.target.style.backgroundColor = '#ed4245';
-                                                                        e.target.style.color = '#ffffff';
-                                                                    }}
-                                                                    onMouseOut={(e) => {
-                                                                        e.target.style.backgroundColor = 'transparent';
-                                                                        e.target.style.color = '#b9bbbe';
-                                                                    }}
-                                                                    title="削除"
-                                                                >
-                                                                    🗑️
-                                                                </button>
-                                                            </>
-                                                        )}
-
-                                                        <button
-                                                            onClick={() => addReaction(msg.id, user.uid, '👍')}
-                                                            style={{
-                                                                backgroundColor: 'transparent',
-                                                                border: 'none',
-                                                                borderRadius: '4px',
-                                                                padding: '6px',
-                                                                color: '#b9bbbe',
-                                                                cursor: 'pointer',
-                                                                fontSize: '16px'
-                                                            }}
-                                                            onMouseOver={(e) => {
-                                                                e.target.style.backgroundColor = '#40444b';
-                                                                e.target.style.color = '#dcddde';
-                                                            }}
-                                                            onMouseOut={(e) => {
-                                                                e.target.style.backgroundColor = 'transparent';
-                                                                e.target.style.color = '#b9bbbe';
-                                                            }}
-                                                            title="いいね"
-                                                        >
-                                                            👍
-                                                        </button>
+                                                {/* リアクション表示 */}
+                                                {msg.reactions && Object.keys(msg.reactions).length > 0 && (
+                                                    <div style={{
+                                                        display: 'flex',
+                                                        gap: '4px',
+                                                        marginTop: '6px',
+                                                        flexWrap: 'wrap',
+                                                        justifyContent: isMyMessage ? 'flex-end' : 'flex-start'
+                                                    }}>
+                                                        {Object.entries(msg.reactions).map(([emoji, users]) => (
+                                                            <button
+                                                                key={emoji}
+                                                                onClick={() => {
+                                                                    if (users.includes(user.uid)) {
+                                                                        removeReaction(msg.id, user.uid, emoji);
+                                                                    } else {
+                                                                        addReaction(msg.id, user.uid, emoji);
+                                                                    }
+                                                                }}
+                                                                style={{
+                                                                    backgroundColor: users.includes(user.uid) ? 
+                                                                        (isMyMessage ? '#ffffff' : '#5865f2') : 
+                                                                        'rgba(64, 68, 75, 0.6)',
+                                                                    color: users.includes(user.uid) ? 
+                                                                        (isMyMessage ? '#5865f2' : '#ffffff') : 
+                                                                        '#dcddde',
+                                                                    border: 'none',
+                                                                    borderRadius: '12px',
+                                                                    padding: '2px 8px',
+                                                                    fontSize: '12px',
+                                                                    cursor: 'pointer',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '4px',
+                                                                    transition: 'all 0.1s ease',
+                                                                    backdropFilter: 'blur(10px)'
+                                                                }}
+                                                            >
+                                                                <span>{emoji}</span>
+                                                                <span style={{ fontSize: '10px', fontWeight: '600' }}>
+                                                                    {users.length}
+                                                                </span>
+                                                            </button>
+                                                        ))}
                                                     </div>
                                                 )}
                                             </div>
+
+                                            {/* メッセージアクション */}
+                                            {hoveredMessage === msg.id && (
+                                                <div style={{
+                                                    position: 'absolute',
+                                                    top: '-8px',
+                                                    [isMyMessage ? 'left' : 'right']: '20px',
+                                                    display: 'flex',
+                                                    gap: '2px',
+                                                    backgroundColor: '#2f3136',
+                                                    padding: '4px',
+                                                    borderRadius: '8px',
+                                                    border: '1px solid #40444b',
+                                                    boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+                                                    zIndex: 10
+                                                }}>
+                                                    <button
+                                                        onClick={() => setReplyingTo(msg)}
+                                                        style={{
+                                                            backgroundColor: 'transparent',
+                                                            border: 'none',
+                                                            borderRadius: '4px',
+                                                            padding: '6px',
+                                                            color: '#b9bbbe',
+                                                            cursor: 'pointer',
+                                                            fontSize: '14px'
+                                                        }}
+                                                        onMouseOver={(e) => {
+                                                            e.target.style.backgroundColor = '#40444b';
+                                                            e.target.style.color = '#dcddde';
+                                                        }}
+                                                        onMouseOut={(e) => {
+                                                            e.target.style.backgroundColor = 'transparent';
+                                                            e.target.style.color = '#b9bbbe';
+                                                        }}
+                                                        title="返信"
+                                                    >
+                                                        💬
+                                                    </button>
+
+                                                    {msg.userId === user.uid && (
+                                                        <>
+                                                            <button
+                                                                onClick={() => {
+                                                                    setEditingMessage(msg);
+                                                                    setInput(msg.content);
+                                                                }}
+                                                                style={{
+                                                                    backgroundColor: 'transparent',
+                                                                    border: 'none',
+                                                                    borderRadius: '4px',
+                                                                    padding: '6px',
+                                                                    color: '#b9bbbe',
+                                                                    cursor: 'pointer',
+                                                                    fontSize: '14px'
+                                                                }}
+                                                                onMouseOver={(e) => {
+                                                                    e.target.style.backgroundColor = '#40444b';
+                                                                    e.target.style.color = '#dcddde';
+                                                                }}
+                                                                onMouseOut={(e) => {
+                                                                    e.target.style.backgroundColor = 'transparent';
+                                                                    e.target.style.color = '#b9bbbe';
+                                                                }}
+                                                                title="編集"
+                                                            >
+                                                                ✏️
+                                                            </button>
+                                                            <button
+                                                                onClick={() => deleteMessage(msg.id)}
+                                                                style={{
+                                                                    backgroundColor: 'transparent',
+                                                                    border: 'none',
+                                                                    borderRadius: '4px',
+                                                                    padding: '6px',
+                                                                    color: '#b9bbbe',
+                                                                    cursor: 'pointer',
+                                                                    fontSize: '14px'
+                                                                }}
+                                                                onMouseOver={(e) => {
+                                                                    e.target.style.backgroundColor = '#ed4245';
+                                                                    e.target.style.color = '#ffffff';
+                                                                }}
+                                                                onMouseOut={(e) => {
+                                                                    e.target.style.backgroundColor = 'transparent';
+                                                                    e.target.style.color = '#b9bbbe';
+                                                                }}
+                                                                title="削除"
+                                                            >
+                                                                🗑️
+                                                            </button>
+                                                        </>
+                                                    )}
+
+                                                    <button
+                                                        onClick={() => addReaction(msg.id, user.uid, '👍')}
+                                                        style={{
+                                                            backgroundColor: 'transparent',
+                                                            border: 'none',
+                                                            borderRadius: '4px',
+                                                            padding: '6px',
+                                                            color: '#b9bbbe',
+                                                            cursor: 'pointer',
+                                                            fontSize: '14px'
+                                                        }}
+                                                        onMouseOver={(e) => {
+                                                            e.target.style.backgroundColor = '#40444b';
+                                                            e.target.style.color = '#dcddde';
+                                                        }}
+                                                        onMouseOut={(e) => {
+                                                            e.target.style.backgroundColor = 'transparent';
+                                                            e.target.style.color = '#b9bbbe';
+                                                        }}
+                                                        title="いいね"
+                                                    >
+                                                        👍
+                                                    </button>
+                                                </div>
+                                            )}
                                         </div>
-                                    );
-                                })}
+                                    </div>
+                                );
+                            })}
                             <div ref={messagesEndRef} />
                         </div>
 
