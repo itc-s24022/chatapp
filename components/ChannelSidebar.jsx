@@ -7,7 +7,10 @@ export default function ChannelSidebar({
     currentChannel, 
     onChannelSelect, 
     onCreateChannel,
-    user 
+    user,
+    voiceParticipants = [],
+    speakingUsers = new Set(),
+    isMuted = false
 }) {
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [channelName, setChannelName] = useState('');
@@ -61,6 +64,13 @@ export default function ChannelSidebar({
             display: 'flex',
             flexDirection: 'column'
         }}>
+            <style>{`
+                @keyframes pulse {
+                    0% { opacity: 1; transform: scale(1); }
+                    50% { opacity: 0.5; transform: scale(1.2); }
+                    100% { opacity: 1; transform: scale(1); }
+                }
+            `}</style>
             {/* サーバー名ヘッダー */}
             <div style={{
                 padding: '12px 16px',
@@ -186,28 +196,108 @@ export default function ChannelSidebar({
                         </button>
                     </div>
                     
-                    {voiceChannels.map(channel => (
-                        <div
-                            key={channel.id}
-                            onClick={() => onChannelSelect(channel.id)}
-                            style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '8px',
-                                padding: '6px 8px 6px 16px',
-                                margin: '1px 8px',
-                                borderRadius: '4px',
-                                cursor: 'pointer',
-                                backgroundColor: currentChannel === channel.id ? '#5865f2' : 'transparent',
-                                color: currentChannel === channel.id ? '#ffffff' : '#8e9297',
-                                transition: 'all 0.15s ease'
-                            }}
-                        >
-                            <span style={{ fontSize: '20px' }}>🔊</span>
-                            <span style={{ fontSize: '16px' }}>{channel.name}</span>
-                        </div>
-                    ))}
+                    {voiceChannels.map(channel => {
+                        const channelParticipants = voiceParticipants.filter(p => p.channelId === channel.id);
+                        const isActiveChannel = currentChannel === channel.id;
+                        
+                        return (
+                            <div key={channel.id}>
+                                <div
+                                    onClick={() => onChannelSelect(channel.id)}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        padding: '6px 8px 6px 16px',
+                                        margin: '1px 8px',
+                                        borderRadius: '4px',
+                                        cursor: 'pointer',
+                                        backgroundColor: isActiveChannel ? '#5865f2' : 'transparent',
+                                        color: isActiveChannel ? '#ffffff' : '#8e9297',
+                                        transition: 'all 0.15s ease'
+                                    }}
+                                    onMouseOver={(e) => {
+                                        if (!isActiveChannel) {
+                                            e.target.style.backgroundColor = '#40444b';
+                                            e.target.style.color = '#dcddde';
+                                        }
+                                    }}
+                                    onMouseOut={(e) => {
+                                        if (!isActiveChannel) {
+                                            e.target.style.backgroundColor = 'transparent';
+                                            e.target.style.color = '#8e9297';
+                                        }
+                                    }}
+                                >
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span style={{ fontSize: '20px' }}>🔊</span>
+                                        <span style={{ fontSize: '16px' }}>{channel.name}</span>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <span style={{ fontSize: '14px', cursor: 'pointer' }}>💬</span>
+                                        <span style={{ fontSize: '14px', cursor: 'pointer' }}>👥</span>
+                                        <span style={{ fontSize: '14px', cursor: 'pointer' }}>⚙️</span>
+                                    </div>
+                                </div>
+                                
+                                {/* 参加者リスト */}
+                                {channelParticipants.length > 0 && (
+                                    <div style={{
+                                        padding: '0 16px 8px 32px'
+                                    }}>
+                                        {channelParticipants.map(participant => (
+                                            <div
+                                                key={participant.userId}
+                                                style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '8px',
+                                                    padding: '4px 8px',
+                                                    borderRadius: '4px',
+                                                    cursor: 'pointer',
+                                                    transition: 'background-color 0.15s ease'
+                                                }}
+                                                onMouseOver={(e) => e.target.style.backgroundColor = '#40444b'}
+                                                onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}
+                                                title={participant.userName}
+                                            >
+                                                <div style={{
+                                                    width: '20px',
+                                                    height: '20px',
+                                                    borderRadius: '50%',
+                                                    backgroundColor: participant.userId === user?.uid ? '#5865f2' : '#43b581',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    color: 'white',
+                                                    fontSize: '10px',
+                                                    fontWeight: '600'
+                                                }}>
+                                                    {participant.userName.charAt(0).toUpperCase()}
+                                                </div>
+                                                <span style={{ 
+                                                    color: '#8e9297', 
+                                                    fontSize: '14px',
+                                                    flex: 1
+                                                }}>
+                                                    {participant.userName}
+                                                </span>
+                                                <span style={{ 
+                                                    color: '#8e9297', 
+                                                    fontSize: '12px'
+                                                }}>
+                                                    {participant.userId === user?.uid ? (isMuted ? '🔇' : '🎤') : '🔇'}
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
                 </div>
+                
+
             </div>
 
             {/* ユーザー情報エリア */}

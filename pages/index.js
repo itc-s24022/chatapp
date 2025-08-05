@@ -35,6 +35,7 @@ import MemberList from "../components/MemberList";
 import ServerInvites from "../components/ServerInvites";
 import RoleManager from "../components/RoleManager";
 import ImageUploader from "../components/ImageUploader";
+import VoiceChannel from "../components/VoiceChannel";
 
 export default function ChatPage() {
     const [user, setUser] = useState(null);
@@ -55,6 +56,10 @@ export default function ChatPage() {
     const [userPermissions, setUserPermissions] = useState([]);
     const [imageAttachment, setImageAttachment] = useState(null);
     const [hoveredMessage, setHoveredMessage] = useState(null);
+    const [isVoiceChannelActive, setIsVoiceChannelActive] = useState(false);
+    const [voiceParticipants, setVoiceParticipants] = useState([]);
+    const [speakingUsers, setSpeakingUsers] = useState(new Set());
+    const [isMuted, setIsMuted] = useState(false);
     const messagesEndRef = useRef(null);
     const router = useRouter();
 
@@ -62,6 +67,7 @@ export default function ChatPage() {
     useEffect(() => {
         const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
             if (currentUser) {
+                console.log('ユーザー認証成功:', currentUser.uid, currentUser.email);
                 setUser(currentUser);
                 // ユーザー情報をFirestoreに保存
                 try {
@@ -70,10 +76,12 @@ export default function ChatPage() {
                         email: currentUser.email,
                         photoURL: currentUser.photoURL
                     });
+                    console.log('ユーザー情報保存完了');
                 } catch (error) {
                     console.error('ユーザー情報保存エラー:', error);
                 }
             } else {
+                console.log('ユーザー未認証 - ログインページへリダイレクト');
                 router.push("/login");
             }
         });
@@ -84,16 +92,29 @@ export default function ChatPage() {
     useEffect(() => {
         if (!user) return;
 
+        console.log('サーバー取得開始 - ユーザーID:', user.uid);
+
         const unsubscribe = getUserServers(user.uid, (snapshot) => {
-            const serverList = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            }));
+            console.log('サーバー取得結果:', snapshot.docs.length, '件');
+            const serverList = snapshot.docs.map(doc => {
+                const data = doc.data();
+                console.log('サーバーデータ:', doc.id, data);
+                return {
+                    id: doc.id,
+                    ...data
+                };
+            });
             setServers(serverList);
+            console.log('設定されたサーバーリスト:', serverList);
 
             if (serverList.length > 0 && !currentServer) {
+                console.log('最初のサーバーを選択:', serverList[0]);
                 setCurrentServer(serverList[0]);
+            } else if (serverList.length === 0) {
+                console.log('サーバーが見つかりませんでした');
             }
+        }, (error) => {
+            console.error('サーバー取得エラー:', error);
         });
 
         return () => unsubscribe();
@@ -320,6 +341,14 @@ export default function ChatPage() {
                 servers={servers}
                 currentServer={currentServer?.id}
                 onServerSelect={(serverId) => {
+                    console.log('サーバー選択:', serverId);
+                    
+                    // 現在のボイスチャンネルを非アクティブにする
+                    if (currentChannel && currentChannel.type === 'voice') {
+                        console.log('サーバー変更時のボイスチャンネル非アクティブ化');
+                        setIsVoiceChannelActive(false);
+                    }
+                    
                     if (serverId === 'dm') {
                         setCurrentServer({ id: 'dm', name: 'ダイレクトメッセージ' });
                         setChannels(dmChannels);
@@ -343,15 +372,32 @@ export default function ChatPage() {
                     currentChannel={currentChannel?.id}
                     onChannelSelect={(channelId) => {
                         const channel = channels.find(c => c.id === channelId);
+                        console.log('チャンネル選択:', channel?.name, channel?.type);
+                        
+                        // 現在のチャンネルがボイスチャンネルの場合、非アクティブにする
+                        if (currentChannel && currentChannel.type === 'voice') {
+                            console.log('現在のボイスチャンネルを非アクティブ化');
+                            setIsVoiceChannelActive(false);
+                        }
+                        
                         setCurrentChannel(channel);
+                        
+                        // 新しいチャンネルがボイスチャンネルの場合は自動的にアクティブにする
+                        if (channel && channel.type === 'voice') {
+                            console.log('新しいボイスチャンネルをアクティブ化');
+                            setIsVoiceChannelActive(true);
+                        }
                     }}
                     onCreateChannel={handleChannelCreate}
                     user={user}
+                    voiceParticipants={voiceParticipants}
+                    speakingUsers={speakingUsers}
+                    isMuted={isMuted}
                 />
             ) : null}
 
             {/* メインチャットエリア */}
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative' }}>
                 {/* ヘッダー */}
                 <div style={{
                     display: 'flex',
@@ -1122,6 +1168,18 @@ export default function ChatPage() {
 
             {/* サーバー招待通知 */}
             <ServerInvites user={user} />
+            
+            {/* ボイスチャンネル */}
+            {isVoiceChannelActive && currentChannel?.type === 'voice' && (
+                <VoiceChannel 
+                    channel={currentChannel}
+                    currentUser={user}
+                    isActive={isVoiceChannelActive}
+                    onParticipantsUpdate={(participants) => setVoiceParticipants(participants)}
+                    onSpeakingUsersUpdate={(users) => setSpeakingUsers(users)}
+                    onMuteStateUpdate={(muted) => setIsMuted(muted)}
+                />
+            )}
         </div>
     );
 }
