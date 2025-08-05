@@ -1,7 +1,7 @@
-
 import { useState } from "react";
 import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
 import { useRouter } from "next/router";
+import Link from "next/link";
 import { auth } from "../lib/firebase";
 
 export default function Signup() {
@@ -64,6 +64,7 @@ export default function Signup() {
                     </p>
                 </div>
 
+                {/* ユーザー名入力 */}
                 <div style={{ marginBottom: '20px' }}>
                     <label style={{
                         display: 'block',
@@ -97,6 +98,7 @@ export default function Signup() {
                     />
                 </div>
 
+                {/* メールアドレス入力 */}
                 <div style={{ marginBottom: '20px' }}>
                     <label style={{
                         display: 'block',
@@ -130,6 +132,7 @@ export default function Signup() {
                     />
                 </div>
 
+                {/* パスワード入力 */}
                 <div style={{ marginBottom: '32px' }}>
                     <label style={{
                         display: 'block',
@@ -163,6 +166,7 @@ export default function Signup() {
                     />
                 </div>
 
+                {/* 登録ボタン */}
                 <button
                     onClick={handleSignup}
                     style={{
@@ -184,6 +188,7 @@ export default function Signup() {
                     続行
                 </button>
 
+                {/* 規約 */}
                 <p style={{
                     textAlign: 'left',
                     color: '#72767d',
@@ -191,34 +196,32 @@ export default function Signup() {
                     margin: '20px 0',
                     lineHeight: '16px'
                 }}>
-                    登録することにより、Discordの{' '}
+                    登録することにより、Discordの{" "}
                     <a href="#" style={{ color: '#00aff4', textDecoration: 'none' }}>
                         利用規約
-                    </a>
-                    {' '}および{' '}
+                    </a>{" "}および{" "}
                     <a href="#" style={{ color: '#00aff4', textDecoration: 'none' }}>
                         プライバシーポリシー
-                    </a>
-                    に同意したものとみなされます。
+                    </a>{" "}に同意したものとみなされます。
                 </p>
 
+                {/* ログインリンク */}
                 <p style={{
                     textAlign: 'left',
                     color: '#72767d',
                     fontSize: '14px',
                     margin: '24px 0 0 0'
                 }}>
-                    <a
-                        href="/login"
-                        style={{
+                    <Link href="/login" passHref legacyBehavior>
+                        <a style={{
                             color: '#00aff4',
                             textDecoration: 'none'
                         }}
                         onMouseOver={(e) => e.target.style.textDecoration = 'underline'}
-                        onMouseOut={(e) => e.target.style.textDecoration = 'none'}
-                    >
-                        すでにアカウントをお持ちですか？
-                    </a>
+                        onMouseOut={(e) => e.target.style.textDecoration = 'none'}>
+                            すでにアカウントをお持ちですか？
+                        </a>
+                    </Link>
                 </p>
             </div>
         </div>
