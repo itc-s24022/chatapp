@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
 import { useRouter } from "next/router";
-import Link from "next/link";
+import Link from "next/link"; // ✅ 必須
 import { auth } from "../lib/firebase";
 
 export default function Signup() {
@@ -18,9 +18,7 @@ export default function Signup() {
 
         try {
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-            await updateProfile(userCredential.user, {
-                displayName: username,
-            });
+            await updateProfile(userCredential.user, { displayName: username });
             alert("登録成功！");
             router.push("/login");
         } catch (error) {
@@ -47,178 +45,100 @@ export default function Signup() {
                 margin: '20px'
             }}>
                 <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-                    <h1 style={{
-                        color: '#ffffff',
-                        fontSize: '24px',
-                        fontWeight: '600',
-                        margin: '0 0 8px 0'
-                    }}>
+                    <h1 style={{ color: '#ffffff', fontSize: '24px', fontWeight: '600', marginBottom: '8px' }}>
                         アカウントを作成
                     </h1>
-                    <p style={{
-                        color: '#b9bbbe',
-                        fontSize: '16px',
-                        margin: 0
-                    }}>
+                    <p style={{ color: '#b9bbbe', fontSize: '16px', margin: 0 }}>
                         またお会いできて嬉しいです！
                     </p>
                 </div>
 
-                {/* ユーザー名入力 */}
+                {/* ユーザー名 */}
                 <div style={{ marginBottom: '20px' }}>
                     <label style={{
-                        display: 'block',
-                        color: '#b9bbbe',
-                        fontSize: '12px',
-                        fontWeight: '600',
-                        textTransform: 'uppercase',
-                        marginBottom: '8px',
-                        letterSpacing: '0.02em'
+                        color: '#b9bbbe', fontSize: '12px', fontWeight: '600',
+                        textTransform: 'uppercase', marginBottom: '8px', display: 'block'
                     }}>
                         ユーザー名 <span style={{ color: '#f38ba8' }}>*</span>
                     </label>
                     <input
                         type="text"
-                        placeholder="ユーザー名を入力"
                         value={username}
                         onChange={(e) => setUsername(e.target.value)}
+                        placeholder="ユーザー名を入力"
                         style={{
-                            width: '100%',
-                            backgroundColor: '#202225',
-                            border: 'none',
-                            borderRadius: '4px',
-                            padding: '12px',
-                            color: '#dcddde',
-                            fontSize: '16px',
-                            outline: 'none',
-                            boxSizing: 'border-box'
+                            width: '100%', backgroundColor: '#202225',
+                            border: 'none', borderRadius: '4px', padding: '12px',
+                            color: '#dcddde', fontSize: '16px'
                         }}
-                        onFocus={(e) => e.target.style.backgroundColor = '#40444b'}
-                        onBlur={(e) => e.target.style.backgroundColor = '#202225'}
                     />
                 </div>
 
-                {/* メールアドレス入力 */}
+                {/* メールアドレス */}
                 <div style={{ marginBottom: '20px' }}>
                     <label style={{
-                        display: 'block',
-                        color: '#b9bbbe',
-                        fontSize: '12px',
-                        fontWeight: '600',
-                        textTransform: 'uppercase',
-                        marginBottom: '8px',
-                        letterSpacing: '0.02em'
+                        color: '#b9bbbe', fontSize: '12px', fontWeight: '600',
+                        textTransform: 'uppercase', marginBottom: '8px', display: 'block'
                     }}>
                         メールアドレス <span style={{ color: '#f38ba8' }}>*</span>
                     </label>
                     <input
                         type="email"
-                        placeholder="メールアドレスを入力"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
+                        placeholder="メールアドレスを入力"
                         style={{
-                            width: '100%',
-                            backgroundColor: '#202225',
-                            border: 'none',
-                            borderRadius: '4px',
-                            padding: '12px',
-                            color: '#dcddde',
-                            fontSize: '16px',
-                            outline: 'none',
-                            boxSizing: 'border-box'
+                            width: '100%', backgroundColor: '#202225',
+                            border: 'none', borderRadius: '4px', padding: '12px',
+                            color: '#dcddde', fontSize: '16px'
                         }}
-                        onFocus={(e) => e.target.style.backgroundColor = '#40444b'}
-                        onBlur={(e) => e.target.style.backgroundColor = '#202225'}
                     />
                 </div>
 
-                {/* パスワード入力 */}
+                {/* パスワード */}
                 <div style={{ marginBottom: '32px' }}>
                     <label style={{
-                        display: 'block',
-                        color: '#b9bbbe',
-                        fontSize: '12px',
-                        fontWeight: '600',
-                        textTransform: 'uppercase',
-                        marginBottom: '8px',
-                        letterSpacing: '0.02em'
+                        color: '#b9bbbe', fontSize: '12px', fontWeight: '600',
+                        textTransform: 'uppercase', marginBottom: '8px', display: 'block'
                     }}>
                         パスワード <span style={{ color: '#f38ba8' }}>*</span>
                     </label>
                     <input
                         type="password"
-                        placeholder="パスワードを入力"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
+                        placeholder="パスワードを入力"
                         style={{
-                            width: '100%',
-                            backgroundColor: '#202225',
-                            border: 'none',
-                            borderRadius: '4px',
-                            padding: '12px',
-                            color: '#dcddde',
-                            fontSize: '16px',
-                            outline: 'none',
-                            boxSizing: 'border-box'
+                            width: '100%', backgroundColor: '#202225',
+                            border: 'none', borderRadius: '4px', padding: '12px',
+                            color: '#dcddde', fontSize: '16px'
                         }}
-                        onFocus={(e) => e.target.style.backgroundColor = '#40444b'}
-                        onBlur={(e) => e.target.style.backgroundColor = '#202225'}
                     />
                 </div>
 
-                {/* 登録ボタン */}
+                {/* 続行ボタン */}
                 <button
                     onClick={handleSignup}
                     style={{
-                        width: '100%',
-                        backgroundColor: '#5865f2',
-                        color: 'white',
-                        border: 'none',
-                        padding: '12px',
-                        borderRadius: '4px',
-                        fontSize: '16px',
-                        fontWeight: '500',
-                        cursor: 'pointer',
-                        marginBottom: '8px',
-                        transition: 'background-color 0.17s ease'
+                        width: '100%', backgroundColor: '#5865f2',
+                        color: '#fff', padding: '12px', borderRadius: '4px',
+                        border: 'none', fontSize: '16px', cursor: 'pointer'
                     }}
-                    onMouseOver={(e) => e.target.style.backgroundColor = '#4752c4'}
-                    onMouseOut={(e) => e.target.style.backgroundColor = '#5865f2'}
                 >
                     続行
                 </button>
 
-                {/* 規約 */}
-                <p style={{
-                    textAlign: 'left',
-                    color: '#72767d',
-                    fontSize: '12px',
-                    margin: '20px 0',
-                    lineHeight: '16px'
-                }}>
-                    登録することにより、Discordの{" "}
-                    <a href="#" style={{ color: '#00aff4', textDecoration: 'none' }}>
-                        利用規約
-                    </a>{" "}および{" "}
-                    <a href="#" style={{ color: '#00aff4', textDecoration: 'none' }}>
-                        プライバシーポリシー
-                    </a>{" "}に同意したものとみなされます。
+                {/* 利用規約 */}
+                <p style={{ color: '#72767d', fontSize: '12px', marginTop: '20px' }}>
+                    登録することにより、Discordの{' '}
+                    <a href="#" style={{ color: '#00aff4' }}>利用規約</a> および{' '}
+                    <a href="#" style={{ color: '#00aff4' }}>プライバシーポリシー</a> に同意したものとみなされます。
                 </p>
 
-                {/* ログインリンク */}
-                <p style={{
-                    textAlign: 'left',
-                    color: '#72767d',
-                    fontSize: '14px',
-                    margin: '24px 0 0 0'
-                }}>
-                    <Link href="/login" passHref legacyBehavior>
-                        <a style={{
-                            color: '#00aff4',
-                            textDecoration: 'none'
-                        }}
-                        onMouseOver={(e) => e.target.style.textDecoration = 'underline'}
-                        onMouseOut={(e) => e.target.style.textDecoration = 'none'}>
+                {/* ✅ 修正箇所：<Link> を使用 */}
+                <p style={{ color: '#72767d', fontSize: '14px', marginTop: '24px' }}>
+                    <Link href="/login" legacyBehavior>
+                        <a style={{ color: '#00aff4', textDecoration: 'none' }}>
                             すでにアカウントをお持ちですか？
                         </a>
                     </Link>
