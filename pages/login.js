@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react";
 import {
   signInWithPopup,
@@ -38,40 +39,200 @@ export default function Login() {
   };
 
   return (
-      <div style={{ textAlign: "center", marginTop: "50px" }}>
-        <h1>ログインページ</h1>
-
-        <div>
-          <input
-              type="email"
-              placeholder="メールアドレス"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              style={{ padding: "8px", margin: "5px", width: "250px" }}
-          />
-          <br />
-          <input
-              type="password"
-              placeholder="パスワード"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              style={{ padding: "8px", margin: "5px", width: "250px" }}
-          />
-          <br />
-          <button onClick={loginWithEmail} style={{ padding: "10px 20px", fontSize: "16px", marginTop: "10px" }}>
-            メールでログイン
-          </button>
+    <div style={{
+      minHeight: '100vh',
+      backgroundColor: '#36393f',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif'
+    }}>
+      <div style={{
+        backgroundColor: '#2f3136',
+        padding: '40px',
+        borderRadius: '8px',
+        boxShadow: '0 8px 16px rgba(0,0,0,0.24)',
+        width: '100%',
+        maxWidth: '480px',
+        margin: '20px'
+      }}>
+        <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+          <h1 style={{
+            color: '#ffffff',
+            fontSize: '24px',
+            fontWeight: '600',
+            margin: '0 0 8px 0'
+          }}>
+            おかえりなさい！
+          </h1>
+          <p style={{
+            color: '#b9bbbe',
+            fontSize: '16px',
+            margin: 0
+          }}>
+            またお会いできて嬉しいです！
+          </p>
         </div>
 
-        <hr style={{ width: "200px", margin: "20px auto" }} />
+        <form onSubmit={(e) => {
+          e.preventDefault();
+          loginWithEmail();
+        }}>
+          <div style={{ marginBottom: '20px' }}>
+            <label style={{
+              display: 'block',
+              color: '#b9bbbe',
+              fontSize: '12px',
+              fontWeight: '600',
+              textTransform: 'uppercase',
+              marginBottom: '8px',
+              letterSpacing: '0.5px'
+            }}>
+              メールアドレス
+            </label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              style={{
+                width: '100%',
+                padding: '12px',
+                backgroundColor: '#40444b',
+                border: 'none',
+                borderRadius: '4px',
+                color: '#dcddde',
+                fontSize: '16px',
+                outline: 'none',
+                boxSizing: 'border-box'
+              }}
+            />
+          </div>
 
-        <button onClick={loginWithGoogle} style={{ padding: "10px 20px", fontSize: "16px" }}>
+          <div style={{ marginBottom: '24px' }}>
+            <label style={{
+              display: 'block',
+              color: '#b9bbbe',
+              fontSize: '12px',
+              fontWeight: '600',
+              textTransform: 'uppercase',
+              marginBottom: '8px',
+              letterSpacing: '0.5px'
+            }}>
+              パスワード
+            </label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              style={{
+                width: '100%',
+                padding: '12px',
+                backgroundColor: '#40444b',
+                border: 'none',
+                borderRadius: '4px',
+                color: '#dcddde',
+                fontSize: '16px',
+                outline: 'none',
+                boxSizing: 'border-box'
+              }}
+            />
+          </div>
+
+          <button
+            type="submit"
+            style={{
+              width: '100%',
+              backgroundColor: '#5865f2',
+              color: 'white',
+              border: 'none',
+              padding: '12px',
+              borderRadius: '4px',
+              fontSize: '16px',
+              fontWeight: '500',
+              cursor: 'pointer',
+              marginBottom: '16px',
+              transition: 'background-color 0.17s ease'
+            }}
+            onMouseOver={(e) => e.target.style.backgroundColor = '#4752c4'}
+            onMouseOut={(e) => e.target.style.backgroundColor = '#5865f2'}
+          >
+            ログイン
+          </button>
+        </form>
+
+        <div style={{
+          textAlign: 'center',
+          margin: '20px 0',
+          position: 'relative'
+        }}>
+          <div style={{
+            height: '1px',
+            backgroundColor: '#40444b',
+            position: 'relative'
+          }}>
+            <span style={{
+              position: 'absolute',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              backgroundColor: '#2f3136',
+              padding: '0 16px',
+              color: '#72767d',
+              fontSize: '14px'
+            }}>
+              または
+            </span>
+          </div>
+        </div>
+
+        <button
+          onClick={loginWithGoogle}
+          style={{
+            width: '100%',
+            backgroundColor: '#4285f4',
+            color: 'white',
+            border: 'none',
+            padding: '12px',
+            borderRadius: '4px',
+            fontSize: '16px',
+            fontWeight: '500',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '8px',
+            transition: 'background-color 0.17s ease'
+          }}
+          onMouseOver={(e) => e.target.style.backgroundColor = '#3367d6'}
+          onMouseOut={(e) => e.target.style.backgroundColor = '#4285f4'}
+        >
+          <span style={{ fontSize: '18px' }}>🌐</span>
           Googleでログイン
         </button>
 
-        <p style={{ marginTop: "20px" }}>
-          アカウントがない方は <a href="/signup">新規登録</a>
+        <p style={{
+          textAlign: 'center',
+          color: '#72767d',
+          fontSize: '14px',
+          marginTop: '24px',
+          margin: '24px 0 0 0'
+        }}>
+          アカウントが必要ですか？{' '}
+          <a
+            href="/signup"
+            style={{
+              color: '#00aff4',
+              textDecoration: 'none'
+            }}
+            onMouseOver={(e) => e.target.style.textDecoration = 'underline'}
+            onMouseOut={(e) => e.target.style.textDecoration = 'none'}
+          >
+            新規登録
+          </a>
         </p>
       </div>
+    </div>
   );
 }
