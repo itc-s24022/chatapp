@@ -16,11 +16,11 @@ import {
     addReaction,
     removeReaction,
     getUserDMs,
-    createDMChannel,
+    // createDMChannel,  // 未使用のためコメントアウト
     sendDMMessage,
-    sendFriendRequest,
-    getServerMembers,
-    addMemberToServer,
+    // sendFriendRequest,  // 未使用のためコメントアウト
+    // getServerMembers,  // 未使用のためコメントアウト
+    // addMemberToServer,  // 未使用のためコメントアウト
     inviteUserToServer,
     saveUserInfo,
     getMemberPermissions,
@@ -29,10 +29,10 @@ import {
     getImage,
     deleteServer,
     updateServerIcon,
-    updateUserTags,
-    searchUsersByTag,
-    inviteUsersByTag,
-    getAllTags
+    // updateUserTags,  // 未使用のためコメントアウト
+    // searchUsersByTag,  // 未使用のためコメントアウト
+    // inviteUsersByTag,  // 未使用のためコメントアウト
+    // getAllTags  // 未使用のためコメントアウト
 } from "../lib/firestore";
 import ServerSidebar from "../components/ServerSidebar";
 import ChannelSidebar from "../components/ChannelSidebar";
@@ -43,6 +43,7 @@ import RoleManager from "../components/RoleManager";
 import ImageUploader from "../components/ImageUploader";
 import VoiceChannel from "../components/VoiceChannel";
 import TagManager from "../components/TagManager";
+import Image from 'next/image';
 
 export default function ChatPage() {
     const [user, setUser] = useState(null);
@@ -54,7 +55,7 @@ export default function ChatPage() {
     const [input, setInput] = useState("");
     const [editingMessage, setEditingMessage] = useState(null);
     const [replyingTo, setReplyingTo] = useState(null);
-    const [dmChannels, setDmChannels] = useState([]);
+    // const [dmChannels, setDmChannels] = useState([]);  // 未使用のためコメントアウト
     const [showMemberList, setShowMemberList] = useState(false);
     const [showInviteModal, setShowInviteModal] = useState(false);
     const [showRoleManager, setShowRoleManager] = useState(false);
@@ -96,7 +97,7 @@ export default function ChatPage() {
         return () => unsubscribeAuth();
     }, [router]);
 
-    // ユーザーのサーバー取得 useEffectの修正
+    // ユーザーのサーバー取得 useEffect
     useEffect(() => {
         if (!user) return;
         console.log('サーバー取得開始 - ユーザーID:', user.uid);
@@ -123,7 +124,7 @@ export default function ChatPage() {
             console.error('サーバー取得エラー:', error);
         });
         return () => unsubscribe();
-    }, [user]); // currentServerとisDMModeを依存配列から削除
+    }, [user, currentServer]); // currentServerを依存配列に追加
 
     // DM取得
     useEffect(() => {
@@ -133,7 +134,7 @@ export default function ChatPage() {
                 id: doc.id,
                 ...doc.data()
             }));
-            setDmChannels(dmList);
+            // setDmChannels(dmList);  // 未使用のためコメントアウト
             console.log('DM一覧取得:', dmList);
         });
         return () => unsubscribe();
@@ -1043,12 +1044,12 @@ export default function ChatPage() {
                                             alignItems: 'center'
                                         }}>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                <img  // imageタグからimgタグに修正
+                                                <Image
                                                     src={imageAttachment.url}
                                                     alt="添付画像"
+                                                    width={40}
+                                                    height={40}
                                                     style={{
-                                                        width: '40px',
-                                                        height: '40px',
                                                         objectFit: 'cover',
                                                         borderRadius: '4px'
                                                     }}
@@ -1373,7 +1374,7 @@ export default function ChatPage() {
     );
 }
 
-// imageタグではなくimgタグを使用
+// ImageDisplayコンポーネント
 function ImageDisplay({ imageId }) {
     const [imageData, setImageData] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -1431,12 +1432,12 @@ function ImageDisplay({ imageId }) {
     }
 
     return (
-        <img  // imageタグからimgタグに修正
+        <Image
             src={imageData.data}
             alt={imageData.name || '画像'}
+            width={400}
+            height={300}
             style={{
-                maxWidth: '400px',
-                maxHeight: '300px',
                 borderRadius: '8px',
                 cursor: 'pointer'
             }}
