@@ -97,35 +97,45 @@ export default function ChatPage() {
         return () => unsubscribeAuth();
     }, [router]);
 
-    // ユーザーのサーバー取得 useEffect
+    // ユーザーのサーバー取得 useEffectの修正
     useEffect(() => {
         if (!user) return;
         console.log('サーバー取得開始 - ユーザーID:', user.uid);
-        const unsubscribe = getUserServers(user.uid, (snapshot) => {
-            console.log('サーバー取得結果:', snapshot.docs.length, '件');
-            const serverList = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            }));
-            setServers(serverList);
-            console.log('設定されたサーバーリスト:', serverList);
 
-            // 初期選択：DMモードを優先
-            if (serverList.length === 0) {
-                console.log('サーバーが見つかりませんでした - DMモードに切り替え');
+        // エラーハンドリングを強化
+        const unsubscribe = getUserServers(user.uid,
+            (snapshot) => {
+                console.log('サーバー取得結果:', snapshot.docs.length, '件');
+                const serverList = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }));
+                setServers(serverList);
+                console.log('設定されたサーバーリスト:', serverList);
+
+                // 初期選択：DMモードを優先
+                if (serverList.length === 0) {
+                    console.log('サーバーが見つかりませんでした - DMモードに切り替え');
+                    setIsDMMode(true);
+                    setCurrentServer({ id: 'dm', name: 'ダイレクトメッセージ' });
+                } else if (!currentServer) {
+                    console.log('最初のサーバーを選択:', serverList[0]);
+                    setCurrentServer(serverList[0]);
+                    setIsDMMode(false);
+                }
+            },
+            (error) => {
+                console.error('サーバー取得エラー:', error);
+                // エラーが発生した場合でもDMモードに切り替える
                 setIsDMMode(true);
                 setCurrentServer({ id: 'dm', name: 'ダイレクトメッセージ' });
-            } else if (!currentServer) {
-                console.log('最初のサーバーを選択:', serverList[0]);
-                setCurrentServer(serverList[0]);
-                setIsDMMode(false);
             }
-        }, (error) => {
-            console.error('サーバー取得エラー:', error);
-        });
-        return () => unsubscribe();
-    }, [user, currentServer]); // currentServerを依存配列に追加
+        );
 
+        return () => {
+            if (unsubscribe) unsubscribe();
+        };
+    }, [user]); // currentServerを依存配列から削除して無限ループを防止e
     // DM取得
     useEffect(() => {
         if (!user) return;
