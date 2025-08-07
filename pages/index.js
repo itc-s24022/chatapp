@@ -1038,7 +1038,7 @@ export default function ChatPage() {
                                         alignItems: 'center'
                                     }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            <img
+                                            <image
                                                 src={imageAttachment.url}
                                                 alt="添付画像"
                                                 style={{
@@ -1423,7 +1423,7 @@ function ImageDisplay({ imageId }) {
     }
 
     return (
-        <img
+        <image
             src={imageData.data}
             alt={imageData.name}
             style={{

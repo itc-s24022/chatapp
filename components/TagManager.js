@@ -1,14 +1,13 @@
 import { useState, useEffect } from 'react';
 import {
     updateUserTags,
-    getAllTags,
+    // getAllTags, // 未使用のためコメントアウト
     searchUsersByTag,
     inviteUsersByTag
 } from '../lib/firestore';
 
 export default function TagManager({ user, currentServer }) {
     const [userTags, setUserTags] = useState([]);
-    const [allTags, setAllTags] = useState([]);
     const [newTag, setNewTag] = useState('');
     const [tagSearch, setTagSearch] = useState('');
     const [tagUsers, setTagUsers] = useState([]);
@@ -31,19 +30,6 @@ export default function TagManager({ user, currentServer }) {
             fetchUserTags();
         }
     }, [user]);
-
-    useEffect(() => {
-        // 全てのタグを取得
-        const fetchAllTags = async () => {
-            try {
-                const tags = await getAllTags();
-                setAllTags(tags);
-            } catch (error) {
-                console.error('タグ取得エラー:', error);
-            }
-        };
-        fetchAllTags();
-    }, []);
 
     const handleAddTag = async () => {
         if (!newTag.trim() || userTags.includes(newTag.trim())) return;
