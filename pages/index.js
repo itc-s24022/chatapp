@@ -113,11 +113,15 @@ export default function ChatPage() {
                     setCurrentServer({ id: 'dm', name: 'ダイレクトメッセージ' });
 
                     // 個人用チャンネルとグローバルチャンネルを取得
-                    getAllUserChannels(user.uid, (channels) => {
-                        if (channels.length > 0 && !currentChannel) {
-                            setCurrentChannel(channels[0]);
-                        }
-                    });
+                    try {
+                        getAllUserChannels(user.uid, (channels) => {
+                            if (channels && channels.length > 0 && !currentChannel) {
+                                setCurrentChannel(channels[0]);
+                            }
+                        });
+                    } catch (error) {
+                        console.error('チャンネル取得エラー:', error);
+                    }
                 } else if (!currentServer) {
                     console.log('最初のサーバーを選択:', serverList[0]);
                     setCurrentServer(serverList[0]);
@@ -131,11 +135,15 @@ export default function ChatPage() {
                 setCurrentServer({ id: 'dm', name: 'ダイレクトメッセージ' });
 
                 // 個人用チャンネルとグローバルチャンネルを取得
-                getAllUserChannels(user.uid, (channels) => {
-                    if (channels.length > 0 && !currentChannel) {
-                        setCurrentChannel(channels[0]);
-                    }
-                });
+                try {
+                    getAllUserChannels(user.uid, (channels) => {
+                        if (channels && channels.length > 0 && !currentChannel) {
+                            setCurrentChannel(channels[0]);
+                        }
+                    });
+                } catch (error) {
+                    console.error('チャンネル取得エラー:', error);
+                }
             }
         );
 
@@ -179,20 +187,30 @@ export default function ChatPage() {
     // チャンネルのメッセージ取得
     useEffect(() => {
         if (!currentChannel) return;
+
         const unsubscribe = getChannelMessages(currentChannel.id, (snapshot) => {
-            const messageList = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            })).sort((a, b) => {
-                // timestampが存在しない場合の処理
-                if (!a.timestamp || !b.timestamp) return 0;
-                const timeA = a.timestamp.seconds || 0;
-                const timeB = b.timestamp.seconds || 0;
-                return timeA - timeB;
-            });
-            setMessages(messageList);
-            scrollToBottom();
+            try {
+                const messageList = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                })).sort((a, b) => {
+                    // timestampが存在しない場合の処理
+                    if (!a.timestamp || !b.timestamp) return 0;
+                    const timeA = a.timestamp.seconds || 0;
+                    const timeB = b.timestamp.seconds || 0;
+                    return timeA - timeB;
+                });
+                setMessages(messageList);
+                scrollToBottom();
+            } catch (error) {
+                console.error('メッセージ処理エラー:', error);
+                setMessages([]);
+            }
+        }, (error) => {
+            console.error('メッセージ取得エラー:', error);
+            setMessages([]);
         });
+
         return () => unsubscribe();
     }, [currentChannel]);
 
