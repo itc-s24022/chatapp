@@ -12,8 +12,7 @@ import {
     onSnapshot,
     serverTimestamp,
     arrayUnion,
-    arrayRemove,
-    setDoc
+    arrayRemove
 } from 'firebase/firestore';
 import { db } from './firebase';
 
@@ -90,46 +89,6 @@ export const getServerChannels = (serverId, callback) => {
 
 export const deleteChannel = async (channelId) => {
     await deleteDoc(doc(db, 'channels', channelId));
-};
-
-// サーバーから退会
-export const leaveServer = async (serverId, userId) => {
-    try {
-        // サーバーの所有者は退会できない
-        const serverDoc = await getDoc(doc(db, 'servers', serverId));
-        if (!serverDoc.exists()) {
-            throw new Error('サーバーが見つかりません');
-        }
-
-        const serverData = serverDoc.data();
-        if (serverData.ownerId === userId) {
-            throw new Error('サーバーの所有者は退会できません');
-        }
-
-        // サーバーメンバーコレクションから削除
-        const memberQuery = query(
-            collection(db, 'serverMembers'),
-            where('serverId', '==', serverId),
-            where('uid', '==', userId)
-        );
-        const memberSnapshot = await getDocs(memberQuery);
-
-        if (!memberSnapshot.empty) {
-            await deleteDoc(memberSnapshot.docs[0].ref);
-        }
-
-        // サーバーのメンバーリストからも削除
-        const serverRef = doc(db, 'servers', serverId);
-        await updateDoc(serverRef, {
-            members: arrayRemove(userId)
-        });
-
-        console.log('サーバーから退会しました');
-        return true;
-    } catch (error) {
-        console.error('サーバー退会エラー:', error);
-        throw error;
-    }
 };
 
 // メッセージ関連
@@ -214,14 +173,10 @@ export const getUserFriends = (userId, callback, errorCallback) => {
 // フレンドリクエストを送信
 export const sendFriendRequest = async (senderId, senderName, receiverEmail) => {
     try {
-        console.log('フレンドリクエスト送信開始:', { senderId, senderName, receiverEmail });
-
-        // 受信者のユーザー情報を取得（重複を排除）
+        // 受信者のユーザー情報を取得
         const usersRef = collection(db, 'users');
-        const q = query(usersRef, where('email', '==', receiverEmail.toLowerCase().trim()));
+        const q = query(usersRef, where('email', '==', receiverEmail));
         const querySnapshot = await getDocs(q);
-
-        console.log('ユーザー検索結果:', querySnapshot.size, '件');
 
         if (querySnapshot.empty) {
             throw new Error('指定されたメールアドレスのユーザーが見つかりません');
@@ -230,8 +185,6 @@ export const sendFriendRequest = async (senderId, senderName, receiverEmail) => 
         const receiverDoc = querySnapshot.docs[0];
         const receiverId = receiverDoc.id;
         const receiverData = receiverDoc.data();
-
-        console.log('受信者情報:', { receiverId, receiverData });
 
         if (receiverId === senderId) {
             throw new Error('自分自身にフレンドリクエストを送ることはできません');
@@ -788,27 +741,25 @@ export const updateServerSettings = async (serverId, settings) => {
 // ユーザー検索とメンバー招待
 export const searchUserByEmail = async (email) => {
     try {
-        // まずusersコレクションで検索（重複を排除）
+        // まずusersコレクションで検索
         const q = query(
             collection(db, 'users'),
-            where('email', '==', email.toLowerCase().trim())
+            where('email', '==', email)
         );
         const snapshot = await getDocs(q);
+        const users = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        }));
 
-        // 重複を排除してユーザーを返す
-        const uniqueUsers = {};
-        snapshot.docs.forEach(doc => {
-            const userData = doc.data();
-            const emailKey = userData.email.toLowerCase().trim();
-            if (!uniqueUsers[emailKey]) {
-                uniqueUsers[emailKey] = {
-                    id: doc.id,
-                    ...userData
-                };
-            }
-        });
+        if (users.length > 0) {
+            return users;
+        }
 
-        return Object.values(uniqueUsers);
+        // usersコレクションにない場合は、Firebase Authから検索
+        // 実際の実装では、サーバーサイドでAdmin SDKを使用する必要があります
+        // ここでは仮のユーザーデータを返すか、エラーハンドリングを改善
+        return [];
     } catch (error) {
         console.error('ユーザー検索エラー:', error);
         return [];
@@ -858,63 +809,6 @@ export const inviteUserToServer = async (serverId, userEmail, inviterName) => {
     return await addDoc(collection(db, 'serverInvites'), inviteData);
 };
 
-// タグ別にユーザーを招待
-export const inviteUsersByTag = async (serverId, tag, inviterName) => {
-    try {
-        // 指定されたタグを持つユーザーを検索
-        const usersRef = collection(db, 'users');
-        const q = query(
-            usersRef,
-            where('tags', 'array-contains', tag)
-        );
-        const querySnapshot = await getDocs(q);
-
-        if (querySnapshot.empty) {
-            throw new Error(`タグ "${tag}" を持つユーザーが見つかりません`);
-        }
-
-        const invitePromises = [];
-        querySnapshot.forEach(userDoc => {
-            const userData = userDoc.data();
-            const userId = userDoc.id;
-
-            // 既にサーバーのメンバーかチェック
-            const memberQuery = query(
-                collection(db, 'serverMembers'),
-                where('serverId', '==', serverId),
-                where('uid', '==', userId)
-            );
-
-            invitePromises.push(
-                getDocs(memberQuery).then(memberSnapshot => {
-                    if (memberSnapshot.empty) {
-                        // メンバーでない場合は招待を作成
-                        return addDoc(collection(db, 'serverInvites'), {
-                            serverId,
-                            userId: userId,
-                            userEmail: userData.email,
-                            userName: userData.displayName || '匿名',
-                            inviterName,
-                            status: 'pending',
-                            type: 'tag_invite',
-                            tag: tag,
-                            createdAt: serverTimestamp()
-                        });
-                    }
-                    return null;
-                })
-            );
-        });
-
-        await Promise.all(invitePromises);
-        console.log(`タグ "${tag}" のユーザーを招待しました`);
-        return true;
-    } catch (error) {
-        console.error('タグ別招待エラー:', error);
-        throw error;
-    }
-};
-
 export const getServerInvites = (userId, callback) => {
     const q = query(
         collection(db, 'serverInvites'),
@@ -937,44 +831,20 @@ export const declineServerInvite = async (inviteId) => {
 export const saveUserInfo = async (userId, userData) => {
     const userRef = doc(db, 'users', userId);
     try {
-        const userDoc = await getDoc(userRef);
-        if (userDoc.exists()) {
-            // ドキュメントが存在する場合は更新
-            await updateDoc(userRef, {
-                ...userData,
-                lastLogin: serverTimestamp()
-            });
-        } else {
-            // ドキュメントが存在しない場合は新規作成
-            await setDoc(userRef, {
-                uid: userId,
-                ...userData,
-                tags: [], // タグフィールドを追加
-                avatar: null,
-                status: 'online',
-                createdAt: serverTimestamp(),
-                lastLogin: serverTimestamp()
-            });
-        }
-        console.log('ユーザー情報保存完了:', userId);
+        await updateDoc(userRef, {
+            ...userData,
+            lastLogin: serverTimestamp()
+        });
     } catch (error) {
-        console.error('ユーザー情報保存エラー:', error);
-        // エラーが発生した場合でも新規作成を試みる
-        try {
-            await setDoc(userRef, {
-                uid: userId,
-                ...userData,
-                tags: [], // タグフィールドを追加
-                avatar: null,
-                status: 'online',
-                createdAt: serverTimestamp(),
-                lastLogin: serverTimestamp()
-            });
-            console.log('ユーザー情報新規作成完了:', userId);
-        } catch (innerError) {
-            console.error('ユーザー情報新規作成エラー:', innerError);
-            throw innerError;
-        }
+        // ドキュメントが存在しない場合は新規作成
+        await addDoc(collection(db, 'users'), {
+            uid: userId,
+            ...userData,
+            avatar: null,
+            status: 'online',
+            createdAt: serverTimestamp(),
+            lastLogin: serverTimestamp()
+        });
     }
 };
 
@@ -991,61 +861,6 @@ export const updateUserProfile = async (userId, profileData) => {
             ...profileData,
             updatedAt: serverTimestamp()
         });
-    }
-};
-
-// ユーザータグの更新
-export const updateUserTags = async (userId, tags) => {
-    const userQuery = query(
-        collection(db, 'users'),
-        where('uid', '==', userId)
-    );
-    const snapshot = await getDocs(userQuery);
-    if (!snapshot.empty) {
-        const userDoc = snapshot.docs[0];
-        await updateDoc(userDoc.ref, {
-            tags: tags,
-            updatedAt: serverTimestamp()
-        });
-    }
-};
-
-// タグでユーザーを検索
-export const searchUsersByTag = async (tag) => {
-    try {
-        const usersRef = collection(db, 'users');
-        const q = query(
-            usersRef,
-            where('tags', 'array-contains', tag)
-        );
-        const querySnapshot = await getDocs(q);
-
-        return querySnapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-        }));
-    } catch (error) {
-        console.error('タグ別ユーザー検索エラー:', error);
-        return [];
-    }
-};
-
-// 全てのタグを取得
-export const getAllTags = async () => {
-    try {
-        const usersRef = collection(db, 'users');
-        const querySnapshot = await getDocs(usersRef);
-
-        const tagSet = new Set();
-        querySnapshot.forEach(doc => {
-            const tags = doc.data().tags || [];
-            tags.forEach(tag => tagSet.add(tag));
-        });
-
-        return Array.from(tagSet);
-    } catch (error) {
-        console.error('タグ取得エラー:', error);
-        return [];
     }
 };
 
