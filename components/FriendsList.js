@@ -13,7 +13,7 @@ import {
     serverTimestamp,
     arrayUnion,
     arrayRemove
-} from 'firebase/firestore';
+}from 'firebase/firestore';
 import { db } from './firebase';
 
 // サーバー関連
