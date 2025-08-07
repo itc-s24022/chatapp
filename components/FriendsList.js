@@ -14,7 +14,7 @@ import {
     arrayUnion,
     arrayRemove
 }from 'firebase/firestore';
-import { db } from './firebase';
+import { db } from '../lib/firebase';
 
 // サーバー関連
 export const createServer = async (name, ownerId, ownerName) => {
