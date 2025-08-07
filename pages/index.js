@@ -16,11 +16,7 @@ import {
     addReaction,
     removeReaction,
     getUserDMs,
-    // createDMChannel,  // 未使用のためコメントアウト
     sendDMMessage,
-    // sendFriendRequest,  // 未使用のためコメントアウト
-    // getServerMembers,  // 未使用のためコメントアウト
-    // addMemberToServer,  // 未使用のためコメントアウト
     inviteUserToServer,
     saveUserInfo,
     getMemberPermissions,
@@ -29,10 +25,8 @@ import {
     getImage,
     deleteServer,
     updateServerIcon,
-    // updateUserTags,  // 未使用のためコメントアウト
-    // searchUsersByTag,  // 未使用のためコメントアウト
-    // inviteUsersByTag,  // 未使用のためコメントアウト
-    // getAllTags  // 未使用のためコメントアウト
+    getAllUserChannels,
+    sendGlobalMessage
 } from "../lib/firestore";
 import ServerSidebar from "../components/ServerSidebar";
 import ChannelSidebar from "../components/ChannelSidebar";
@@ -55,7 +49,6 @@ export default function ChatPage() {
     const [input, setInput] = useState("");
     const [editingMessage, setEditingMessage] = useState(null);
     const [replyingTo, setReplyingTo] = useState(null);
-    // const [dmChannels, setDmChannels] = useState([]);  // 未使用のためコメントアウト
     const [showMemberList, setShowMemberList] = useState(false);
     const [showInviteModal, setShowInviteModal] = useState(false);
     const [showRoleManager, setShowRoleManager] = useState(false);
@@ -118,6 +111,13 @@ export default function ChatPage() {
                     console.log('サーバーが見つかりませんでした - DMモードに切り替え');
                     setIsDMMode(true);
                     setCurrentServer({ id: 'dm', name: 'ダイレクトメッセージ' });
+
+                    // 個人用チャンネルとグローバルチャンネルを取得
+                    getAllUserChannels(user.uid, (channels) => {
+                        if (channels.length > 0 && !currentChannel) {
+                            setCurrentChannel(channels[0]);
+                        }
+                    });
                 } else if (!currentServer) {
                     console.log('最初のサーバーを選択:', serverList[0]);
                     setCurrentServer(serverList[0]);
@@ -129,13 +129,21 @@ export default function ChatPage() {
                 // エラーが発生した場合でもDMモードに切り替える
                 setIsDMMode(true);
                 setCurrentServer({ id: 'dm', name: 'ダイレクトメッセージ' });
+
+                // 個人用チャンネルとグローバルチャンネルを取得
+                getAllUserChannels(user.uid, (channels) => {
+                    if (channels.length > 0 && !currentChannel) {
+                        setCurrentChannel(channels[0]);
+                    }
+                });
             }
         );
 
         return () => {
             if (unsubscribe) unsubscribe();
         };
-    }, [user]); // currentServerを依存配列から削除して無限ループを防止e
+    }, [user]); // currentServerを依存配列から削除して無限ループを防止
+
     // DM取得
     useEffect(() => {
         if (!user) return;
@@ -144,7 +152,6 @@ export default function ChatPage() {
                 id: doc.id,
                 ...doc.data()
             }));
-            // setDmChannels(dmList);  // 未使用のためコメントアウト
             console.log('DM一覧取得:', dmList);
         });
         return () => unsubscribe();
@@ -230,7 +237,6 @@ export default function ChatPage() {
             console.log('サーバー変更時のボイスチャンネル非アクティブ化');
             setIsVoiceChannelActive(false);
         }
-
         if (serverId === 'dm') {
             setCurrentServer({ id: 'dm', name: 'ダイレクトメッセージ' });
             setChannels([]);
@@ -289,6 +295,25 @@ export default function ChatPage() {
                             user.displayName || "匿名",
                             input.trim(),
                             replyingTo?.id
+                        );
+                    }
+                } else if (currentChannel.type === 'global') {
+                    // グローバルチャンネル送信
+                    if (imageAttachment) {
+                        await sendMessageWithImage(
+                            currentChannel.id,
+                            user.uid,
+                            user.displayName || "匿名",
+                            input.trim(),
+                            imageAttachment.id,
+                            replyingTo?.id
+                        );
+                    } else {
+                        await sendGlobalMessage(
+                            currentChannel.id,
+                            user.uid,
+                            user.displayName || "匿名",
+                            input.trim()
                         );
                     }
                 } else {
@@ -503,7 +528,9 @@ export default function ChatPage() {
                                             `💬 ${getOtherParticipantName(currentChannel)}` :
                                             currentChannel.type === 'voice' ?
                                                 `🔊 ${currentChannel.name || 'ボイスチャンネル'}` :
-                                                `# ${currentChannel.name || 'チャンネル'}`
+                                                currentChannel.type === 'global' ?
+                                                    `🌐 ${currentChannel.name || 'グローバルチャンネル'}` :
+                                                    `# ${currentChannel.name || 'チャンネル'}`
                                     ) :
                                     isDMMode ? 'フレンドを選択してください' : 'チャンネルを選択してください'
                                 }
@@ -1101,7 +1128,9 @@ export default function ChatPage() {
                                             placeholder={
                                                 currentChannel?.type === 'dm' ?
                                                     `${getOtherParticipantName(currentChannel)}にメッセージを送信` :
-                                                    `#${currentChannel?.name || 'チャンネル'} にメッセージを送信`
+                                                    currentChannel?.type === 'global' ?
+                                                        `グローバルチャンネルにメッセージを送信` :
+                                                        `#${currentChannel?.name || 'チャンネル'} にメッセージを送信`
                                             }
                                             style={{
                                                 flex: 1,
@@ -1118,7 +1147,7 @@ export default function ChatPage() {
                                             }}
                                             rows={1}
                                         />
-                                        {((currentServer?.id !== 'dm' && hasPermission(userPermissions, DEFAULT_PERMISSIONS.ATTACH_FILES)) || currentChannel?.type === 'dm') && (
+                                        {((currentServer?.id !== 'dm' && hasPermission(userPermissions, DEFAULT_PERMISSIONS.ATTACH_FILES)) || currentChannel?.type === 'dm' || currentChannel?.type === 'global') && (
                                             <button
                                                 onClick={() => setShowImageUploader(true)}
                                                 style={{
