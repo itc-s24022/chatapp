@@ -63,6 +63,7 @@ export default function ChatPage() {
     const [speakingUsers, setSpeakingUsers] = useState(new Set());
     const [isMuted, setIsMuted] = useState(false);
     const [isDMMode, setIsDMMode] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
     const messagesEndRef = useRef(null);
     const router = useRouter();
 
@@ -86,13 +87,15 @@ export default function ChatPage() {
                 console.log('ユーザー未認証 - ログインページへリダイレクト');
                 router.push("/login");
             }
+            setIsLoading(false);
         });
         return () => unsubscribeAuth();
     }, [router]);
 
     // ユーザーのサーバー取得 useEffectの修正
     useEffect(() => {
-        if (!user) return;
+        if (!user || isLoading) return;
+
         console.log('サーバー取得開始 - ユーザーID:', user.uid);
 
         // エラーハンドリングを強化
@@ -115,12 +118,18 @@ export default function ChatPage() {
                     // 個人用チャンネルとグローバルチャンネルを取得
                     try {
                         getAllUserChannels(user.uid, (channels) => {
-                            if (channels && channels.length > 0 && !currentChannel) {
+                            // channelsがundefinedでないことを確認
+                            if (channels && Array.isArray(channels) && channels.length > 0) {
+                                console.log('チャンネル取得成功:', channels.length, '件');
                                 setCurrentChannel(channels[0]);
+                            } else {
+                                console.log('チャンネルが見つかりませんでした');
+                                setCurrentChannel(null);
                             }
                         });
                     } catch (error) {
                         console.error('チャンネル取得エラー:', error);
+                        setCurrentChannel(null);
                     }
                 } else if (!currentServer) {
                     console.log('最初のサーバーを選択:', serverList[0]);
@@ -137,12 +146,18 @@ export default function ChatPage() {
                 // 個人用チャンネルとグローバルチャンネルを取得
                 try {
                     getAllUserChannels(user.uid, (channels) => {
-                        if (channels && channels.length > 0 && !currentChannel) {
+                        // channelsがundefinedでないことを確認
+                        if (channels && Array.isArray(channels) && channels.length > 0) {
+                            console.log('チャンネル取得成功:', channels.length, '件');
                             setCurrentChannel(channels[0]);
+                        } else {
+                            console.log('チャンネルが見つかりませんでした');
+                            setCurrentChannel(null);
                         }
                     });
                 } catch (error) {
                     console.error('チャンネル取得エラー:', error);
+                    setCurrentChannel(null);
                 }
             }
         );
@@ -150,11 +165,12 @@ export default function ChatPage() {
         return () => {
             if (unsubscribe) unsubscribe();
         };
-    }, [user]); // currentServerを依存配列から削除して無限ループを防止
+    }, [user, isLoading]); // currentServerを依存配列から削除して無限ループを防止
 
     // DM取得
     useEffect(() => {
-        if (!user) return;
+        if (!user || isLoading) return;
+
         const unsubscribe = getUserDMs(user.uid, (snapshot) => {
             const dmList = snapshot.docs.map(doc => ({
                 id: doc.id,
@@ -162,15 +178,17 @@ export default function ChatPage() {
             }));
             console.log('DM一覧取得:', dmList);
         });
+
         return () => unsubscribe();
-    }, [user]);
+    }, [user, isLoading]);
 
     // サーバーのチャンネル取得
     useEffect(() => {
-        if (!currentServer || currentServer.id === 'dm') {
+        if (!currentServer || currentServer.id === 'dm' || isLoading) {
             setChannels([]);
             return;
         }
+
         const unsubscribe = getServerChannels(currentServer.id, (snapshot) => {
             const channelList = snapshot.docs.map(doc => ({
                 id: doc.id,
@@ -181,12 +199,13 @@ export default function ChatPage() {
                 setCurrentChannel(channelList[0]);
             }
         });
+
         return () => unsubscribe();
-    }, [currentServer]);
+    }, [currentServer, isLoading]);
 
     // チャンネルのメッセージ取得
     useEffect(() => {
-        if (!currentChannel) return;
+        if (!currentChannel || isLoading) return;
 
         const unsubscribe = getChannelMessages(currentChannel.id, (snapshot) => {
             try {
@@ -212,14 +231,15 @@ export default function ChatPage() {
         });
 
         return () => unsubscribe();
-    }, [currentChannel]);
+    }, [currentChannel, isLoading]);
 
     // ユーザー権限取得
     useEffect(() => {
-        if (!user || !currentServer || currentServer.id === 'dm') {
+        if (!user || !currentServer || currentServer.id === 'dm' || isLoading) {
             setUserPermissions([]);
             return;
         }
+
         const fetchPermissions = async () => {
             try {
                 const permissions = await getMemberPermissions(currentServer.id, user.uid);
@@ -229,8 +249,9 @@ export default function ChatPage() {
                 setUserPermissions([]);
             }
         };
+
         fetchPermissions();
-    }, [user, currentServer]);
+    }, [user, currentServer, isLoading]);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -239,7 +260,7 @@ export default function ChatPage() {
     // DM関連のヘルパー関数
     const getOtherParticipant = (dmChannel) => {
         if (!dmChannel || dmChannel.type !== 'dm') return null;
-        return dmChannel.participants.find(p => p !== user.uid);
+        return dmChannel.participants.find(p => p !== user?.uid);
     };
 
     const getOtherParticipantName = (dmChannel) => {
@@ -255,6 +276,7 @@ export default function ChatPage() {
             console.log('サーバー変更時のボイスチャンネル非アクティブ化');
             setIsVoiceChannelActive(false);
         }
+
         if (serverId === 'dm') {
             setCurrentServer({ id: 'dm', name: 'ダイレクトメッセージ' });
             setChannels([]);
@@ -277,18 +299,22 @@ export default function ChatPage() {
     // DMチャンネル選択ハンドラ
     const handleDMChannelSelect = (dmChannel) => {
         console.log('DMチャンネル選択:', dmChannel);
-        setCurrentChannel(dmChannel);
-        setCurrentServer({ id: 'dm', name: 'ダイレクトメッセージ' });
-        setIsDMMode(true);
+        if (dmChannel) {
+            setCurrentChannel(dmChannel);
+            setCurrentServer({ id: 'dm', name: 'ダイレクトメッセージ' });
+            setIsDMMode(true);
+        }
     };
 
     const handleSendMessage = async () => {
         if ((!input.trim() && !imageAttachment) || !user || !currentChannel) return;
+
         // サーバーチャンネルの場合は送信権限チェック
         if (currentServer?.id !== 'dm' && !hasPermission(userPermissions, DEFAULT_PERMISSIONS.SEND_MESSAGES)) {
             alert('メッセージを送信する権限がありません');
             return;
         }
+
         try {
             if (editingMessage) {
                 await editMessage(editingMessage.id, input.trim());
@@ -469,6 +495,23 @@ export default function ChatPage() {
             return date.toLocaleDateString();
         }
     };
+
+    // ローディング状態
+    if (isLoading) {
+        return (
+            <div style={{
+                display: 'flex',
+                height: '100vh',
+                backgroundColor: '#36393f',
+                color: '#dcddde',
+                fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif',
+                alignItems: 'center',
+                justifyContent: 'center'
+            }}>
+                <div>読み込み中...</div>
+            </div>
+        );
+    }
 
     return (
         <ErrorBoundary>
@@ -1435,22 +1478,29 @@ export default function ChatPage() {
 function ImageDisplay({ imageId }) {
     const [imageData, setImageData] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
 
     useEffect(() => {
         const fetchImage = async () => {
             if (!imageId) {
                 setLoading(false);
+                setError('画像IDが指定されていません');
                 return;
             }
+
             try {
+                setLoading(true);
                 const data = await getImage(imageId);
                 setImageData(data);
+                setError(null);
             } catch (error) {
                 console.error('画像取得エラー:', error);
+                setError('画像を読み込めませんでした');
             } finally {
                 setLoading(false);
             }
         };
+
         fetchImage();
     }, [imageId]);
 
@@ -1471,7 +1521,7 @@ function ImageDisplay({ imageId }) {
         );
     }
 
-    if (!imageData) {
+    if (error || !imageData) {
         return (
             <div style={{
                 width: '200px',
@@ -1483,7 +1533,7 @@ function ImageDisplay({ imageId }) {
                 justifyContent: 'center',
                 color: '#72767d'
             }}>
-                画像を読み込めませんでした
+                {error || '画像を読み込めませんでした'}
             </div>
         );
     }
