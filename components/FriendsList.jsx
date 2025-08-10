@@ -1,210 +1,123 @@
-import { useState, useEffect, useRef } from 'react';
-import { auth } from '../lib/firebase'; // パスを修正
-import {
+import { useState, useEffect } from 'react';
+import { 
+    sendFriendRequest, 
+    getFriendRequests, 
+    acceptFriendRequest, 
+    declineFriendRequest, 
     getUserFriends,
-    sendFriendRequest,
-    acceptFriendRequest,
-    declineFriendRequest,
-    getUserDMs,
-    createDMChannel,
-    sendMessage,
-    getChannelMessages
+    searchUserByEmail,
+    createDMChannel 
 } from '../lib/firestore';
-export default function FriendsList({ user, onDMChannelSelect }) {
+
+export default function FriendsList({ user }) {
     const [friends, setFriends] = useState([]);
-    const [dmChannels, setDmChannels] = useState([]);
-    const [currentDM, setCurrentDM] = useState(null);
-    const [messages, setMessages] = useState([]);
-    const [input, setInput] = useState("");
-    const [searchEmail, setSearchEmail] = useState("");
-    const [activeTab, setActiveTab] = useState("friends");
     const [friendRequests, setFriendRequests] = useState([]);
-    const messagesEndRef = useRef(null);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [activeTab, setActiveTab] = useState('friends');
+    const [searchResults, setSearchResults] = useState([]);
+    const [loading, setLoading] = useState(false);
+
     useEffect(() => {
         if (!user) return;
-        // フレンド取得
+
         const unsubscribeFriends = getUserFriends(user.uid, (snapshot) => {
-            const friendsList = snapshot.docs.map(doc => ({
+            const friendList = snapshot.docs.map(doc => {
+                const data = doc.data();
+                return {
+                    id: doc.id,
+                    ...data,
+                    friendId: data.user1 === user.uid ? data.user2 : data.user1
+                };
+            });
+            setFriends(friendList);
+        });
+
+        const unsubscribeRequests = getFriendRequests(user.uid, (snapshot) => {
+            const requestList = snapshot.docs.map(doc => ({
                 id: doc.id,
                 ...doc.data()
             }));
-
-            // 承認済みフレンドと保留中のリクエストを分類
-            const acceptedFriends = friendsList.filter(f => f.status === 'accepted');
-            const pendingRequests = friendsList.filter(f =>
-                f.status === 'pending' && f.receiverId === user.uid
-            );
-
-            // 承認済みフレンドの情報を正規化
-            const normalizedFriends = acceptedFriends.map(friend => ({
-                ...friend,
-                friendId: friend.senderId === user.uid ? friend.receiverId : friend.senderId,
-                friendName: friend.senderId === user.uid ? friend.receiverName : friend.senderName
-            }));
-
-            setFriends(normalizedFriends);
-            setFriendRequests(pendingRequests);
+            setFriendRequests(requestList);
         });
-        // DM取得
-        const unsubscribeDMs = getUserDMs(user.uid, (snapshot) => {
-            const dmList = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            }));
-            setDmChannels(dmList);
-        });
+
         return () => {
             unsubscribeFriends();
-            unsubscribeDMs();
+            unsubscribeRequests();
         };
     }, [user]);
-    // DMのメッセージ取得
-    useEffect(() => {
-        if (!currentDM) return;
-        const unsubscribe = getChannelMessages(currentDM.id, (snapshot) => {
-            const messageList = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            })).sort((a, b) => {
-                if (!a.timestamp || !b.timestamp) return 0;
-                const timeA = a.timestamp.seconds || 0;
-                const timeB = b.timestamp.seconds || 0;
-                return timeA - timeB;
-            });
-            setMessages(messageList);
-            scrollToBottom();
-        });
-        return () => unsubscribe();
-    }, [currentDM]);
-    const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    };
-    const handleSendFriendRequest = async () => {
-        if (!searchEmail.trim() || searchEmail === user.email) return;
+
+    const handleSearch = async () => {
+        if (!searchQuery.trim()) return;
+
+        setLoading(true);
         try {
-            await sendFriendRequest(user.uid, user.displayName || '匿名', searchEmail.trim());
-            setSearchEmail("");
-            alert('フレンドリクエストを送信しました');
+            const results = await searchUserByEmail(searchQuery.trim());
+            setSearchResults(results.filter(result => result.uid !== user.uid));
         } catch (error) {
-            console.error('フレンドリクエストエラー:', error);
-            alert('フレンドリクエストに失敗しました: ' + error.message);
+            console.error('検索エラー:', error);
+            alert('ユーザー検索に失敗しました');
+        } finally {
+            setLoading(false);
         }
     };
-    const handleAcceptFriendRequest = async (request) => {
+
+    const handleSendFriendRequest = async (targetUser) => {
         try {
-            await acceptFriendRequest(
-                request.id,
+            await sendFriendRequest(
                 user.uid,
                 user.displayName || '匿名',
-                request.senderId,
-                request.senderName
+                targetUser.uid || targetUser.id,
+                targetUser.displayName || '匿名'
             );
-            alert('フレンドリクエストを承認しました');
+            alert('フレンド申請を送信しました');
+            setSearchResults([]);
+            setSearchQuery('');
         } catch (error) {
-            console.error('承認エラー:', error);
-            alert('承認に失敗しました');
+            console.error('フレンド申請エラー:', error);
+            alert('フレンド申請に失敗しました');
         }
     };
-    const handleDeclineFriendRequest = async (requestId) => {
+
+    const handleAcceptRequest = async (requestId, fromUserId) => {
+        try {
+            await acceptFriendRequest(requestId, fromUserId, user.uid);
+        } catch (error) {
+            console.error('フレンド申請受諾エラー:', error);
+            alert('フレンド申請の受諾に失敗しました');
+        }
+    };
+
+    const handleDeclineRequest = async (requestId) => {
         try {
             await declineFriendRequest(requestId);
-            alert('フレンドリクエストを拒否しました');
         } catch (error) {
-            console.error('拒否エラー:', error);
-            alert('拒否に失敗しました');
+            console.error('フレンド申請拒否エラー:', error);
+            alert('フレンド申請の拒否に失敗しました');
         }
     };
-    const handleStartDM = async (friendId, friendName) => {
+
+    const handleStartDM = async (friendId) => {
         try {
-            // 既存のDMチャンネルを探す
-            const existingDM = dmChannels.find(dm =>
-                dm.participants.includes(friendId) && dm.participants.includes(user.uid)
-            );
-            if (existingDM) {
-                setCurrentDM(existingDM);
-                setActiveTab("dms");
-                if (onDMChannelSelect) {
-                    onDMChannelSelect(existingDM);
-                }
-            } else {
-                // 新しいDMチャンネルを作成
-                const dmChannel = await createDMChannel(
-                    user.uid,
-                    friendId,
-                    user.displayName || '匿名',
-                    friendName
-                );
-                setCurrentDM(dmChannel);
-                setActiveTab("dms");
-                if (onDMChannelSelect) {
-                    onDMChannelSelect(dmChannel);
-                }
-            }
+            await createDMChannel(user.uid, friendId);
+            // DMチャンネルが作成されたことを通知
+            alert('DMチャンネルを作成しました');
         } catch (error) {
-            console.error('DM開始エラー:', error);
-            alert('DMの開始に失敗しました');
+            console.error('DM作成エラー:', error);
+            alert('DM作成に失敗しました');
         }
     };
-    const handleSelectDM = (dm) => {
-        setCurrentDM(dm);
-        if (onDMChannelSelect) {
-            onDMChannelSelect(dm);
-        }
-    };
-    const handleSendMessage = async () => {
-        if (!input.trim() || !user || !currentDM) return;
-        try {
-            await sendMessage(
-                currentDM.id,
-                user.uid,
-                user.displayName || "匿名",
-                input.trim()
-            );
-            setInput("");
-        } catch (error) {
-            console.error('メッセージ送信エラー:', error);
-            alert('メッセージの送信に失敗しました');
-        }
-    };
-    const formatTime = (timestamp) => {
-        if (!timestamp) return "";
-        const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
-        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    };
-    const formatDate = (timestamp) => {
-        if (!timestamp) return "";
-        const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
-        const today = new Date();
-        const yesterday = new Date(today);
-        yesterday.setDate(yesterday.getDate() - 1);
-        if (date.toDateString() === today.toDateString()) {
-            return "今日";
-        } else if (date.toDateString() === yesterday.toDateString()) {
-            return "昨日";
-        } else {
-            return date.toLocaleDateString();
-        }
-    };
-    const getOtherParticipant = (dm) => {
-        return dm.participants.find(p => p !== user.uid);
-    };
-    const getOtherParticipantName = (dm) => {
-        const otherParticipantId = getOtherParticipant(dm);
-        return dm.participantNames?.[otherParticipantId] || '不明なユーザー';
-    };
+
     return (
         <div style={{
             width: '240px',
             backgroundColor: '#2f3136',
-            borderRight: '1px solid #202225',
             display: 'flex',
             flexDirection: 'column',
             height: '100vh'
         }}>
-            {/* ヘッダー */}
             <div style={{
-                padding: '20px',
-                borderBottom: '1px solid #40444b'
+                padding: '12px 16px',
+                borderBottom: '1px solid #202225'
             }}>
                 <h2 style={{
                     color: '#ffffff',
@@ -212,166 +125,153 @@ export default function FriendsList({ user, onDMChannelSelect }) {
                     fontWeight: '600',
                     margin: '0 0 16px 0'
                 }}>
-                    ダイレクトメッセージ
+                    フレンド
                 </h2>
-                {/* タブ */}
-                <div style={{
-                    display: 'flex',
-                    gap: '4px',
-                    backgroundColor: '#40444b',
-                    borderRadius: '4px',
-                    padding: '2px'
-                }}>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                     <button
-                        onClick={() => setActiveTab("friends")}
+                        onClick={() => setActiveTab('friends')}
                         style={{
-                            flex: 1,
-                            backgroundColor: activeTab === "friends" ? '#5865f2' : 'transparent',
-                            color: activeTab === "friends" ? '#ffffff' : '#b9bbbe',
+                            backgroundColor: activeTab === 'friends' ? '#5865f2' : 'transparent',
+                            color: activeTab === 'friends' ? '#ffffff' : '#b9bbbe',
                             border: 'none',
-                            padding: '6px 8px',
-                            borderRadius: '3px',
-                            fontSize: '12px',
-                            fontWeight: '500',
-                            cursor: 'pointer'
+                            padding: '8px 12px',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                            fontSize: '14px'
                         }}
                     >
-                        フレンド
+                        すべて ({friends.length})
                     </button>
                     <button
-                        onClick={() => setActiveTab("dms")}
+                        onClick={() => setActiveTab('requests')}
                         style={{
-                            flex: 1,
-                            backgroundColor: activeTab === "dms" ? '#5865f2' : 'transparent',
-                            color: activeTab === "dms" ? '#ffffff' : '#b9bbbe',
+                            backgroundColor: activeTab === 'requests' ? '#5865f2' : 'transparent',
+                            color: activeTab === 'requests' ? '#ffffff' : '#b9bbbe',
                             border: 'none',
-                            padding: '6px 8px',
-                            borderRadius: '3px',
-                            fontSize: '12px',
-                            fontWeight: '500',
-                            cursor: 'pointer'
+                            padding: '8px 12px',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                            fontSize: '14px',
+                            position: 'relative'
                         }}
                     >
-                        DM
-                    </button>
-                    <button
-                        onClick={() => setActiveTab("add")}
-                        style={{
-                            flex: 1,
-                            backgroundColor: activeTab === "add" ? '#5865f2' : 'transparent',
-                            color: activeTab === "add" ? '#ffffff' : '#b9bbbe',
-                            border: 'none',
-                            padding: '6px 8px',
-                            borderRadius: '3px',
-                            fontSize: '12px',
-                            fontWeight: '500',
-                            cursor: 'pointer'
-                        }}
-                    >
-                        追加
+                        申請中 
+                        {friendRequests.length > 0 && (
+                            <span style={{
+                                backgroundColor: '#ed4245',
+                                color: 'white',
+                                borderRadius: '10px',
+                                padding: '2px 6px',
+                                fontSize: '12px',
+                                marginLeft: '8px'
+                            }}>
+                                {friendRequests.length}
+                            </span>
+                        )}
                     </button>
                 </div>
             </div>
-            {/* コンテンツエリア */}
-            <div style={{ flex: 1, overflow: 'hidden' }}>
-                {/* フレンドリクエスト通知 */}
-                {friendRequests.length > 0 && (
-                    <div style={{
-                        backgroundColor: '#faa61a',
-                        padding: '8px 20px',
-                        borderBottom: '1px solid #40444b'
-                    }}>
-                        <div style={{
-                            color: '#ffffff',
-                            fontSize: '12px',
-                            fontWeight: '600'
-                        }}>
-                            {friendRequests.length}件のフレンドリクエスト
-                        </div>
-                    </div>
-                )}
-                {/* フレンドタブ */}
-                {activeTab === "friends" && (
-                    <div style={{ padding: '12px 0', height: '100%', overflowY: 'auto' }}>
-                        {/* フレンドリクエスト */}
-                        {friendRequests.map(request => (
-                            <div key={request.id} style={{
-                                padding: '8px 20px',
-                                borderBottom: '1px solid #40444b',
-                                backgroundColor: '#40444b'
+
+            <div style={{ padding: '0 16px' }}>
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                    <input
+                        type="text"
+                        placeholder="メールアドレスで検索"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        style={{
+                            backgroundColor: '#202225',
+                            color: '#b9bbbe',
+                            border: 'none',
+                            borderRadius: '4px',
+                            padding: '8px 12px',
+                            fontSize: '14px',
+                            flex: 1
+                        }}
+                    />
+                    <button
+                        onClick={handleSearch}
+                        disabled={loading}
+                        style={{
+                            backgroundColor: '#5865f2',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '4px',
+                            padding: '8px 12px',
+                            cursor: 'pointer',
+                            fontSize: '14px',
+                            whiteSpace: 'nowrap'
+                        }}
+                    >
+                        {loading ? '検索中...' : '検索'}
+                    </button>
+                </div>
+
+                {searchResults.length > 0 && (
+                    <div style={{ marginBottom: '16px' }}>
+                        {searchResults.map(result => (
+                            <div key={result.uid} style={{
+                                backgroundColor: '#40444b',
+                                borderRadius: '4px',
+                                padding: '12px',
+                                marginBottom: '8px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between'
                             }}>
-                                <div style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'space-between'
-                                }}>
-                                    <div>
-                                        <div style={{
-                                            color: '#ffffff',
-                                            fontSize: '14px',
-                                            fontWeight: '500'
-                                        }}>
-                                            {request.senderName}
-                                        </div>
-                                        <div style={{
-                                            color: '#b9bbbe',
-                                            fontSize: '12px'
-                                        }}>
-                                            フレンドリクエスト
-                                        </div>
+                                <div>
+                                    <div style={{ color: '#ffffff', fontSize: '14px', fontWeight: '500' }}>
+                                        {result.displayName || "匿名"}
                                     </div>
-                                    <div style={{ display: 'flex', gap: '4px' }}>
-                                        <button
-                                            onClick={() => handleAcceptFriendRequest(request)}
-                                            style={{
-                                                backgroundColor: '#3ba55c',
-                                                color: 'white',
-                                                border: 'none',
-                                                borderRadius: '3px',
-                                                padding: '4px 8px',
-                                                fontSize: '10px',
-                                                cursor: 'pointer'
-                                            }}
-                                        >
-                                            承認
-                                        </button>
-                                        <button
-                                            onClick={() => handleDeclineFriendRequest(request.id)}
-                                            style={{
-                                                backgroundColor: '#ed4245',
-                                                color: 'white',
-                                                border: 'none',
-                                                borderRadius: '3px',
-                                                padding: '4px 8px',
-                                                fontSize: '10px',
-                                                cursor: 'pointer'
-                                            }}
-                                        >
-                                            拒否
-                                        </button>
+                                    <div style={{ color: '#b9bbbe', fontSize: '12px' }}>
+                                        {result.email}
                                     </div>
                                 </div>
+                                <button
+                                    onClick={() => handleSendFriendRequest(result)}
+                                    style={{
+                                        backgroundColor: '#3ba55c',
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: '4px',
+                                        padding: '6px 12px',
+                                        cursor: 'pointer',
+                                        fontSize: '12px'
+                                    }}
+                                >
+                                    フレンド申請
+                                </button>
                             </div>
                         ))}
-                        {/* フレンド一覧 */}
-                        {friends.map(friend => (
-                            <div key={friend.id} style={{
-                                padding: '8px 20px',
-                                cursor: 'pointer',
-                                transition: 'background-color 0.1s ease'
-                            }}
-                                 onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#36393f'}
-                                 onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>
-                                <div style={{
+                    </div>
+                )}
+            </div>
+
+            <div style={{ flex: 1, overflowY: 'auto', padding: '16px' }}>
+                {activeTab === 'friends' ? (
+                    <div>
+                        {friends.length === 0 ? (
+                            <p style={{ color: '#b9bbbe', fontSize: '14px', textAlign: 'center' }}>
+                                フレンドがいません
+                            </p>
+                        ) : (
+                            friends.map(friend => (
+                                <div key={friend.id} style={{
                                     display: 'flex',
                                     alignItems: 'center',
+                                    gap: '12px',
+                                    padding: '8px',
+                                    borderRadius: '4px',
+                                    cursor: 'pointer',
+                                    marginBottom: '4px',
                                     justifyContent: 'space-between'
-                                }}>
-                                    <div style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '12px'
-                                    }}>
+                                }}
+                                onMouseOver={(e) => e.target.style.backgroundColor = '#40444b'}
+                                onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                                         <div style={{
                                             width: '32px',
                                             height: '32px',
@@ -380,22 +280,22 @@ export default function FriendsList({ user, onDMChannelSelect }) {
                                             display: 'flex',
                                             alignItems: 'center',
                                             justifyContent: 'center',
-                                            color: 'white',
                                             fontSize: '14px',
-                                            fontWeight: '600'
+                                            fontWeight: '600',
+                                            color: 'white'
                                         }}>
-                                            {(friend.friendName || '匿').charAt(0).toUpperCase()}
+                                            {(friend.displayName || "匿").charAt(0).toUpperCase()}
                                         </div>
                                         <div>
                                             <div style={{
-                                                color: '#dcddde',
+                                                color: '#ffffff',
                                                 fontSize: '14px',
                                                 fontWeight: '500'
                                             }}>
-                                                {friend.friendName}
+                                                {friend.displayName || "匿名"}
                                             </div>
                                             <div style={{
-                                                color: '#b9bbbe',
+                                                color: '#43b581',
                                                 fontSize: '12px'
                                             }}>
                                                 オンライン
@@ -403,61 +303,43 @@ export default function FriendsList({ user, onDMChannelSelect }) {
                                         </div>
                                     </div>
                                     <button
-                                        onClick={() => handleStartDM(friend.friendId, friend.friendName)}
+                                        onClick={() => handleStartDM(friend.friendId)}
                                         style={{
                                             backgroundColor: '#5865f2',
                                             color: 'white',
                                             border: 'none',
-                                            borderRadius: '3px',
-                                            padding: '4px 8px',
-                                            fontSize: '10px',
-                                            cursor: 'pointer'
+                                            borderRadius: '4px',
+                                            padding: '6px 12px',
+                                            cursor: 'pointer',
+                                            fontSize: '12px',
+                                            whiteSpace: 'nowrap'
                                         }}
                                     >
-                                        メッセージ
+                                        DM
                                     </button>
                                 </div>
-                            </div>
-                        ))}
-                        {friends.length === 0 && friendRequests.length === 0 && (
-                            <div style={{
-                                padding: '40px 20px',
-                                textAlign: 'center',
-                                color: '#72767d',
-                                fontSize: '14px'
-                            }}>
-                                フレンドがいません<br />
-                                「追加」タブからフレンドを追加してみましょう
-                            </div>
+                            ))
                         )}
                     </div>
-                )}
-                {/* DMタブ */}
-                {activeTab === "dms" && (
-                    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-                        <div style={{ padding: '12px 0', height: '100%', overflowY: 'auto' }}>
-                            {dmChannels.map(dm => (
-                                <div key={dm.id} style={{
-                                    padding: '8px 20px',
-                                    cursor: 'pointer',
-                                    transition: 'background-color 0.1s ease',
-                                    backgroundColor: currentDM?.id === dm.id ? '#40444b' : 'transparent'
-                                }}
-                                     onClick={() => handleSelectDM(dm)}
-                                     onMouseOver={(e) => {
-                                         if (currentDM?.id !== dm.id) {
-                                             e.currentTarget.style.backgroundColor = '#36393f';
-                                         }
-                                     }}
-                                     onMouseOut={(e) => {
-                                         if (currentDM?.id !== dm.id) {
-                                             e.currentTarget.style.backgroundColor = 'transparent';
-                                         }
-                                     }}>
+                ) : (
+                    <div>
+                        {friendRequests.length === 0 ? (
+                            <p style={{ color: '#b9bbbe', fontSize: '14px', textAlign: 'center' }}>
+                                申請はありません
+                            </p>
+                        ) : (
+                            friendRequests.map(request => (
+                                <div key={request.id} style={{
+                                    backgroundColor: '#40444b',
+                                    borderRadius: '4px',
+                                    padding: '12px',
+                                    marginBottom: '8px'
+                                }}>
                                     <div style={{
                                         display: 'flex',
                                         alignItems: 'center',
-                                        gap: '12px'
+                                        gap: '12px',
+                                        marginBottom: '8px'
                                     }}>
                                         <div style={{
                                             width: '32px',
@@ -467,113 +349,60 @@ export default function FriendsList({ user, onDMChannelSelect }) {
                                             display: 'flex',
                                             alignItems: 'center',
                                             justifyContent: 'center',
-                                            color: 'white',
                                             fontSize: '14px',
-                                            fontWeight: '600'
+                                            fontWeight: '600',
+                                            color: 'white'
                                         }}>
-                                            {getOtherParticipantName(dm).charAt(0).toUpperCase()}
+                                            {(request.fromUserName || "匿").charAt(0).toUpperCase()}
                                         </div>
                                         <div>
                                             <div style={{
-                                                color: '#dcddde',
+                                                color: '#ffffff',
                                                 fontSize: '14px',
                                                 fontWeight: '500'
                                             }}>
-                                                {getOtherParticipantName(dm)}
-                                            </div>
-                                            <div style={{
-                                                color: '#b9bbbe',
-                                                fontSize: '12px'
-                                            }}>
-                                                ダイレクトメッセージ
+                                                {request.fromUserName || "匿名"}
                                             </div>
                                         </div>
                                     </div>
+                                    <div style={{
+                                        display: 'flex',
+                                        gap: '8px'
+                                    }}>
+                                        <button
+                                            onClick={() => handleAcceptRequest(request.id, request.fromUserId)}
+                                            style={{
+                                                backgroundColor: '#3ba55c',
+                                                color: 'white',
+                                                border: 'none',
+                                                borderRadius: '4px',
+                                                padding: '6px 12px',
+                                                cursor: 'pointer',
+                                                fontSize: '12px',
+                                                flex: 1
+                                            }}
+                                        >
+                                            承認
+                                        </button>
+                                        <button
+                                            onClick={() => handleDeclineRequest(request.id)}
+                                            style={{
+                                                backgroundColor: '#ed4245',
+                                                color: 'white',
+                                                border: 'none',
+                                                borderRadius: '4px',
+                                                padding: '6px 12px',
+                                                cursor: 'pointer',
+                                                fontSize: '12px',
+                                                flex: 1
+                                            }}
+                                        >
+                                            拒否
+                                        </button>
+                                    </div>
                                 </div>
-                            ))}
-                            {dmChannels.length === 0 && (
-                                <div style={{
-                                    padding: '40px 20px',
-                                    textAlign: 'center',
-                                    color: '#72767d',
-                                    fontSize: '14px'
-                                }}>
-                                    DMがありません<br />
-                                    フレンドとメッセージを始めてみましょう
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                )}
-                {/* フレンド追加タブ */}
-                {activeTab === "add" && (
-                    <div style={{
-                        padding: '20px',
-                        height: '100%',
-                        overflowY: 'auto'
-                    }}>
-                        <div style={{
-                            marginBottom: '16px'
-                        }}>
-                            <label style={{
-                                display: 'block',
-                                color: '#b9bbbe',
-                                fontSize: '12px',
-                                fontWeight: '600',
-                                marginBottom: '8px'
-                            }}>
-                                メールアドレスで検索
-                            </label>
-                            <div style={{
-                                display: 'flex',
-                                gap: '8px'
-                            }}>
-                                <input
-                                    type="email"
-                                    value={searchEmail}
-                                    onChange={(e) => setSearchEmail(e.target.value)}
-                                    placeholder="example@email.com"
-                                    style={{
-                                        flex: 1,
-                                        padding: '8px 12px',
-                                        backgroundColor: '#40444b',
-                                        border: 'none',
-                                        borderRadius: '4px',
-                                        color: '#dcddde',
-                                        fontSize: '14px',
-                                        outline: 'none'
-                                    }}
-                                />
-                                <button
-                                    onClick={handleSendFriendRequest}
-                                    disabled={!searchEmail.trim() || searchEmail === user.email}
-                                    style={{
-                                        backgroundColor: (searchEmail.trim() && searchEmail !== user.email) ? '#5865f2' : '#4f545c',
-                                        color: 'white',
-                                        border: 'none',
-                                        borderRadius: '4px',
-                                        padding: '8px 16px',
-                                        cursor: (searchEmail.trim() && searchEmail !== user.email) ? 'pointer' : 'not-allowed',
-                                        fontSize: '12px',
-                                        fontWeight: '500'
-                                    }}
-                                >
-                                    送信
-                                </button>
-                            </div>
-                        </div>
-                        <div style={{
-                            backgroundColor: '#40444b',
-                            borderRadius: '4px',
-                            padding: '16px',
-                            fontSize: '12px',
-                            color: '#b9bbbe',
-                            lineHeight: '1.5'
-                        }}>
-                            <strong>フレンドの追加方法：</strong><br />
-                            相手のメールアドレスを入力してフレンドリクエストを送信してください。
-                            相手が承認すると、フレンドリストに表示され、ダイレクトメッセージができるようになります。
-                        </div>
+                            ))
+                        )}
                     </div>
                 )}
             </div>

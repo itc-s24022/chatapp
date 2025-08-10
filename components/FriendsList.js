@@ -13,8 +13,8 @@ import {
     serverTimestamp,
     arrayUnion,
     arrayRemove
-}from 'firebase/firestore';
-import { db } from '../lib/firebase';
+} from 'firebase/firestore';
+import { db } from './firebase';
 
 // サーバー関連
 export const createServer = async (name, ownerId, ownerName) => {

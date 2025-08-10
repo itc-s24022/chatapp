@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react";
 import { onAuthStateChanged, updateProfile } from "firebase/auth";
 import { auth } from "../lib/firebase";
@@ -28,6 +29,7 @@ export default function MyPage() {
             alert("ユーザー名を入力してください");
             return;
         }
+
         try {
             await updateProfile(auth.currentUser, {
                 displayName: newName.trim(),
@@ -155,7 +157,7 @@ export default function MyPage() {
                         }}>
                             表示名
                         </label>
-
+                        
                         {editing ? (
                             <div style={{
                                 display: 'flex',
