@@ -13,7 +13,6 @@ import {
     serverTimestamp,
     arrayUnion,
     arrayRemove
-
 } from 'firebase/firestore';
 import { db,auth} from '/lib/firebase'; // Firebaseの初期化を行ったファイルをインポート
 
@@ -156,7 +155,6 @@ export const removeReaction = async (messageId, userId, emoji) => {
 
 // フレンド関連の関数
 // ユーザーのフレンド一覧を取得
-
 export default function getUserFriends(userId, callback, errorCallback) {
 
     try {
@@ -171,9 +169,7 @@ export default function getUserFriends(userId, callback, errorCallback) {
         console.error('フレンド取得エラー:', error);
         if (errorCallback) errorCallback(error);
     }
-
 }
-
 // フレンドリクエストを送信
 export const sendFriendRequest = async (senderId, senderName, receiverEmail) => {
     try {

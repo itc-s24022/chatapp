@@ -683,8 +683,6 @@ export default function ChatPage() {
                                     const showDate = !prevMsg || formatDate(msg.timestamp) !== formatDate(prevMsg.timestamp);
                                     // 自分のメッセージかどうか判定
                                     const isMyMessage = msg.userId === user.uid;
-                                    // DM用のレイアウトかサーバー用のレイアウトかを判定
-                                    const isDMLayout = currentChannel?.type === 'dm';
                                     // 連続メッセージかチェック（同じユーザーが5分以内に投稿）
                                     const isConsecutive = prevMsg &&
                                         prevMsg.userId === msg.userId &&
@@ -724,20 +722,20 @@ export default function ChatPage() {
                                             <div style={{
                                                 display: 'flex',
                                                 flexDirection: 'column',
-                                                alignItems: isDMLayout && isMyMessage ? 'flex-end' : 'flex-start',
+                                                alignItems: isMyMessage ? 'flex-end' : 'flex-start',
                                                 margin: isConsecutive ? '2px 16px' : '8px 16px',
                                                 position: 'relative'
                                             }}
                                                  onMouseEnter={() => setHoveredMessage(msg.id)}
                                                  onMouseLeave={() => setHoveredMessage(null)}>
-                                                {/* ユーザー名表示（他人のメッセージで初回のみ、またはサーバーモード） */}
-                                                {(!isDMLayout || (!isMyMessage && !isConsecutive)) && (
+                                                {/* ユーザー名表示（他人のメッセージで初回のみ） */}
+                                                {!isMyMessage && !isConsecutive && (
                                                     <div style={{
                                                         display: 'flex',
                                                         alignItems: 'center',
                                                         gap: '8px',
                                                         marginBottom: '4px',
-                                                        marginLeft: isDMLayout && isMyMessage ? '0' : '12px'
+                                                        marginLeft: '12px'
                                                     }}>
                                                         <div style={{
                                                             width: '24px',
@@ -777,14 +775,14 @@ export default function ChatPage() {
                                                     {/* 返信先表示 */}
                                                     {msg.replyTo && (
                                                         <div style={{
-                                                            backgroundColor: isDMLayout && isMyMessage ? '#4c5bdb' : '#4f545c',
+                                                            backgroundColor: isMyMessage ? '#4c5bdb' : '#4f545c',
                                                             padding: '6px 12px',
                                                             borderRadius: '12px 12px 4px 4px',
                                                             marginBottom: '2px',
                                                             fontSize: '13px',
                                                             color: '#dcddde',
                                                             opacity: 0.8,
-                                                            borderLeft: (isDMLayout && isMyMessage) ? '3px solid #ffffff' : '3px solid #5865f2'
+                                                            borderLeft: isMyMessage ? '3px solid #ffffff' : '3px solid #5865f2'
                                                         }}>
                                                             <div style={{
                                                                 display: 'flex',
@@ -799,11 +797,10 @@ export default function ChatPage() {
                                                     )}
                                                     {/* メインメッセージバブル */}
                                                     <div style={{
-                                                        backgroundColor: isDMLayout && isMyMessage ? '#5865f2' : '#40444b',
-                                                        color: isDMLayout && isMyMessage ? '#ffffff' : '#dcddde',
+                                                        backgroundColor: isMyMessage ? '#5865f2' : '#40444b',
+                                                        color: isMyMessage ? '#ffffff' : '#dcddde',
                                                         padding: '12px 16px',
-                                                        borderRadius: isDMLayout && isMyMessage ? '18px 18px 4px 18px' :
-                                                            isDMLayout ? '18px 18px 18px 4px' : '18px',
+                                                        borderRadius: isMyMessage ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
                                                         fontSize: '15px',
                                                         lineHeight: '1.375',
                                                         wordWrap: 'break-word',
@@ -834,7 +831,7 @@ export default function ChatPage() {
                                                         {msg.edited && (
                                                             <div style={{
                                                                 fontSize: '10px',
-                                                                color: (isDMLayout && isMyMessage) ? 'rgba(255,255,255,0.7)' : '#72767d',
+                                                                color: isMyMessage ? 'rgba(255,255,255,0.7)' : '#72767d',
                                                                 fontStyle: 'italic',
                                                                 marginTop: '4px',
                                                                 textAlign: 'right'
@@ -843,15 +840,15 @@ export default function ChatPage() {
                                                             </div>
                                                         )}
                                                     </div>
-                                                    {/* 時刻表示（DMレイアウトまたは連続メッセージの場合） */}
-                                                    {(isDMLayout || isConsecutive) && (
+                                                    {/* 時刻表示（連続メッセージの場合） */}
+                                                    {isConsecutive && (
                                                         <div style={{
                                                             fontSize: '11px',
                                                             color: '#72767d',
                                                             marginTop: '2px',
-                                                            textAlign: (isDMLayout && isMyMessage) ? 'right' : 'left',
-                                                            paddingLeft: (isDMLayout && isMyMessage) ? '0' : '12px',
-                                                            paddingRight: (isDMLayout && isMyMessage) ? '12px' : '0'
+                                                            textAlign: isMyMessage ? 'right' : 'left',
+                                                            paddingLeft: isMyMessage ? '0' : '12px',
+                                                            paddingRight: isMyMessage ? '12px' : '0'
                                                         }}>
                                                             {formatTime(msg.timestamp)}
                                                         </div>
@@ -863,7 +860,7 @@ export default function ChatPage() {
                                                             gap: '4px',
                                                             marginTop: '6px',
                                                             flexWrap: 'wrap',
-                                                            justifyContent: (isDMLayout && isMyMessage) ? 'flex-end' : 'flex-start'
+                                                            justifyContent: isMyMessage ? 'flex-end' : 'flex-start'
                                                         }}>
                                                             {Object.entries(msg.reactions).map(([emoji, users]) => (
                                                                 <button
@@ -871,10 +868,10 @@ export default function ChatPage() {
                                                                     onClick={() => handleReaction(msg.id, emoji)}
                                                                     style={{
                                                                         backgroundColor: users.includes(user.uid) ?
-                                                                            ((isDMLayout && isMyMessage) ? '#ffffff' : '#5865f2') :
+                                                                            (isMyMessage ? '#ffffff' : '#5865f2') :
                                                                             'rgba(64, 68, 75, 0.6)',
                                                                         color: users.includes(user.uid) ?
-                                                                            ((isDMLayout && isMyMessage) ? '#5865f2' : '#ffffff') :
+                                                                            (isMyMessage ? '#5865f2' : '#ffffff') :
                                                                             '#dcddde',
                                                                         border: 'none',
                                                                         borderRadius: '12px',
@@ -902,7 +899,7 @@ export default function ChatPage() {
                                                     <div style={{
                                                         position: 'absolute',
                                                         top: '-8px',
-                                                        [(isDMLayout && isMyMessage) ? 'left' : 'right']: '20px',
+                                                        [isMyMessage ? 'left' : 'right']: '20px',
                                                         display: 'flex',
                                                         gap: '2px',
                                                         backgroundColor: '#2f3136',

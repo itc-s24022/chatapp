@@ -1,582 +1,1058 @@
-import { useState, useEffect, useRef } from 'react';
-import { auth } from '../lib/firebase'; // パスを修正
 import {
-    getUserFriends,
-    sendFriendRequest,
-    acceptFriendRequest,
-    declineFriendRequest,
-    getUserDMs,
-    createDMChannel,
-    sendMessage,
-    getChannelMessages
-} from '../lib/firestore';
-export default function FriendsList({ user, onDMChannelSelect }) {
-    const [friends, setFriends] = useState([]);
-    const [dmChannels, setDmChannels] = useState([]);
-    const [currentDM, setCurrentDM] = useState(null);
-    const [messages, setMessages] = useState([]);
-    const [input, setInput] = useState("");
-    const [searchEmail, setSearchEmail] = useState("");
-    const [activeTab, setActiveTab] = useState("friends");
-    const [friendRequests, setFriendRequests] = useState([]);
-    const messagesEndRef = useRef(null);
-    useEffect(() => {
-        if (!user) return;
-        // フレンド取得
-        const unsubscribeFriends = getUserFriends(user.uid, (snapshot) => {
-            const friendsList = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            }));
+    collection,
+    doc,
+    addDoc,
+    updateDoc,
+    deleteDoc,
+    getDocs,
+    getDoc,
+    query,
+    where,
+    orderBy,
+    onSnapshot,
+    serverTimestamp,
+    arrayUnion,
+    arrayRemove
+} from 'firebase/firestore';
+import { db,auth} from '/lib/firebase'; // Firebaseの初期化を行ったファイルをインポート
 
-            // 承認済みフレンドと保留中のリクエストを分類
-            const acceptedFriends = friendsList.filter(f => f.status === 'accepted');
-            const pendingRequests = friendsList.filter(f =>
-                f.status === 'pending' && f.receiverId === user.uid
-            );
+// サーバー関連
+export const createServer = async (name, ownerId, ownerName) => {
+    const serverData = {
+        name,
+        ownerId,
+        members: [ownerId],
+        createdAt: serverTimestamp(),
+        channels: [],
+        icon: null
+    };
+    const serverRef = await addDoc(collection(db, 'servers'), serverData);
 
-            // 承認済みフレンドの情報を正規化
-            const normalizedFriends = acceptedFriends.map(friend => ({
-                ...friend,
-                friendId: friend.senderId === user.uid ? friend.receiverId : friend.senderId,
-                friendName: friend.senderId === user.uid ? friend.receiverName : friend.senderName
-            }));
+    // デフォルトロールを作成
+    const roleIds = {};
+    for (const roleData of DEFAULT_ROLES) {
+        const roleRef = await addDoc(collection(db, 'serverRoles'), {
+            ...roleData,
+            serverId: serverRef.id,
+            createdAt: serverTimestamp()
+        });
+        roleIds[roleData.name] = roleRef.id;
+    }
 
-            setFriends(normalizedFriends);
-            setFriendRequests(pendingRequests);
-        });
-        // DM取得
-        const unsubscribeDMs = getUserDMs(user.uid, (snapshot) => {
-            const dmList = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            }));
-            setDmChannels(dmList);
-        });
-        return () => {
-            unsubscribeFriends();
-            unsubscribeDMs();
-        };
-    }, [user]);
-    // DMのメッセージ取得
-    useEffect(() => {
-        if (!currentDM) return;
-        const unsubscribe = getChannelMessages(currentDM.id, (snapshot) => {
-            const messageList = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            })).sort((a, b) => {
-                if (!a.timestamp || !b.timestamp) return 0;
-                const timeA = a.timestamp.seconds || 0;
-                const timeB = b.timestamp.seconds || 0;
-                return timeA - timeB;
-            });
-            setMessages(messageList);
-            scrollToBottom();
-        });
-        return () => unsubscribe();
-    }, [currentDM]);
-    const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    };
-    const handleSendFriendRequest = async () => {
-        if (!searchEmail.trim() || searchEmail === user.email) return;
-        try {
-            await sendFriendRequest(user.uid, user.displayName || '匿名', searchEmail.trim());
-            setSearchEmail("");
-            alert('フレンドリクエストを送信しました');
-        } catch (error) {
-            console.error('フレンドリクエストエラー:', error);
-            alert('フレンドリクエストに失敗しました: ' + error.message);
-        }
-    };
-    const handleAcceptFriendRequest = async (request) => {
-        try {
-            await acceptFriendRequest(
-                request.id,
-                user.uid,
-                user.displayName || '匿名',
-                request.senderId,
-                request.senderName
-            );
-            alert('フレンドリクエストを承認しました');
-        } catch (error) {
-            console.error('承認エラー:', error);
-            alert('承認に失敗しました');
-        }
-    };
-    const handleDeclineFriendRequest = async (requestId) => {
-        try {
-            await declineFriendRequest(requestId);
-            alert('フレンドリクエストを拒否しました');
-        } catch (error) {
-            console.error('拒否エラー:', error);
-            alert('拒否に失敗しました');
-        }
-    };
-    const handleStartDM = async (friendId, friendName) => {
-        try {
-            // 既存のDMチャンネルを探す
-            const existingDM = dmChannels.find(dm =>
-                dm.participants.includes(friendId) && dm.participants.includes(user.uid)
-            );
-            if (existingDM) {
-                setCurrentDM(existingDM);
-                setActiveTab("dms");
-                if (onDMChannelSelect) {
-                    onDMChannelSelect(existingDM);
-                }
-            } else {
-                // 新しいDMチャンネルを作成
-                const dmChannel = await createDMChannel(
-                    user.uid,
-                    friendId,
-                    user.displayName || '匿名',
-                    friendName
-                );
-                setCurrentDM(dmChannel);
-                setActiveTab("dms");
-                if (onDMChannelSelect) {
-                    onDMChannelSelect(dmChannel);
-                }
-            }
-        } catch (error) {
-            console.error('DM開始エラー:', error);
-            alert('DMの開始に失敗しました');
-        }
-    };
-    const handleSelectDM = (dm) => {
-        setCurrentDM(dm);
-        if (onDMChannelSelect) {
-            onDMChannelSelect(dm);
-        }
-    };
-    const handleSendMessage = async () => {
-        if (!input.trim() || !user || !currentDM) return;
-        try {
-            await sendMessage(
-                currentDM.id,
-                user.uid,
-                user.displayName || "匿名",
-                input.trim()
-            );
-            setInput("");
-        } catch (error) {
-            console.error('メッセージ送信エラー:', error);
-            alert('メッセージの送信に失敗しました');
-        }
-    };
-    const formatTime = (timestamp) => {
-        if (!timestamp) return "";
-        const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
-        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    };
-    const formatDate = (timestamp) => {
-        if (!timestamp) return "";
-        const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
-        const today = new Date();
-        const yesterday = new Date(today);
-        yesterday.setDate(yesterday.getDate() - 1);
-        if (date.toDateString() === today.toDateString()) {
-            return "今日";
-        } else if (date.toDateString() === yesterday.toDateString()) {
-            return "昨日";
-        } else {
-            return date.toLocaleDateString();
-        }
-    };
-    const getOtherParticipant = (dm) => {
-        return dm.participants.find(p => p !== user.uid);
-    };
-    const getOtherParticipantName = (dm) => {
-        const otherParticipantId = getOtherParticipant(dm);
-        return dm.participantNames?.[otherParticipantId] || '不明なユーザー';
-    };
-    return (
-        <div style={{
-            width: '240px',
-            backgroundColor: '#2f3136',
-            borderRight: '1px solid #202225',
-            display: 'flex',
-            flexDirection: 'column',
-            height: '100vh'
-        }}>
-            {/* ヘッダー */}
-            <div style={{
-                padding: '20px',
-                borderBottom: '1px solid #40444b'
-            }}>
-                <h2 style={{
-                    color: '#ffffff',
-                    fontSize: '16px',
-                    fontWeight: '600',
-                    margin: '0 0 16px 0'
-                }}>
-                    ダイレクトメッセージ
-                </h2>
-                {/* タブ */}
-                <div style={{
-                    display: 'flex',
-                    gap: '4px',
-                    backgroundColor: '#40444b',
-                    borderRadius: '4px',
-                    padding: '2px'
-                }}>
-                    <button
-                        onClick={() => setActiveTab("friends")}
-                        style={{
-                            flex: 1,
-                            backgroundColor: activeTab === "friends" ? '#5865f2' : 'transparent',
-                            color: activeTab === "friends" ? '#ffffff' : '#b9bbbe',
-                            border: 'none',
-                            padding: '6px 8px',
-                            borderRadius: '3px',
-                            fontSize: '12px',
-                            fontWeight: '500',
-                            cursor: 'pointer'
-                        }}
-                    >
-                        フレンド
-                    </button>
-                    <button
-                        onClick={() => setActiveTab("dms")}
-                        style={{
-                            flex: 1,
-                            backgroundColor: activeTab === "dms" ? '#5865f2' : 'transparent',
-                            color: activeTab === "dms" ? '#ffffff' : '#b9bbbe',
-                            border: 'none',
-                            padding: '6px 8px',
-                            borderRadius: '3px',
-                            fontSize: '12px',
-                            fontWeight: '500',
-                            cursor: 'pointer'
-                        }}
-                    >
-                        DM
-                    </button>
-                    <button
-                        onClick={() => setActiveTab("add")}
-                        style={{
-                            flex: 1,
-                            backgroundColor: activeTab === "add" ? '#5865f2' : 'transparent',
-                            color: activeTab === "add" ? '#ffffff' : '#b9bbbe',
-                            border: 'none',
-                            padding: '6px 8px',
-                            borderRadius: '3px',
-                            fontSize: '12px',
-                            fontWeight: '500',
-                            cursor: 'pointer'
-                        }}
-                    >
-                        追加
-                    </button>
-                </div>
-            </div>
-            {/* コンテンツエリア */}
-            <div style={{ flex: 1, overflow: 'hidden' }}>
-                {/* フレンドリクエスト通知 */}
-                {friendRequests.length > 0 && (
-                    <div style={{
-                        backgroundColor: '#faa61a',
-                        padding: '8px 20px',
-                        borderBottom: '1px solid #40444b'
-                    }}>
-                        <div style={{
-                            color: '#ffffff',
-                            fontSize: '12px',
-                            fontWeight: '600'
-                        }}>
-                            {friendRequests.length}件のフレンドリクエスト
-                        </div>
-                    </div>
-                )}
-                {/* フレンドタブ */}
-                {activeTab === "friends" && (
-                    <div style={{ padding: '12px 0', height: '100%', overflowY: 'auto' }}>
-                        {/* フレンドリクエスト */}
-                        {friendRequests.map(request => (
-                            <div key={request.id} style={{
-                                padding: '8px 20px',
-                                borderBottom: '1px solid #40444b',
-                                backgroundColor: '#40444b'
-                            }}>
-                                <div style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'space-between'
-                                }}>
-                                    <div>
-                                        <div style={{
-                                            color: '#ffffff',
-                                            fontSize: '14px',
-                                            fontWeight: '500'
-                                        }}>
-                                            {request.senderName}
-                                        </div>
-                                        <div style={{
-                                            color: '#b9bbbe',
-                                            fontSize: '12px'
-                                        }}>
-                                            フレンドリクエスト
-                                        </div>
-                                    </div>
-                                    <div style={{ display: 'flex', gap: '4px' }}>
-                                        <button
-                                            onClick={() => handleAcceptFriendRequest(request)}
-                                            style={{
-                                                backgroundColor: '#3ba55c',
-                                                color: 'white',
-                                                border: 'none',
-                                                borderRadius: '3px',
-                                                padding: '4px 8px',
-                                                fontSize: '10px',
-                                                cursor: 'pointer'
-                                            }}
-                                        >
-                                            承認
-                                        </button>
-                                        <button
-                                            onClick={() => handleDeclineFriendRequest(request.id)}
-                                            style={{
-                                                backgroundColor: '#ed4245',
-                                                color: 'white',
-                                                border: 'none',
-                                                borderRadius: '3px',
-                                                padding: '4px 8px',
-                                                fontSize: '10px',
-                                                cursor: 'pointer'
-                                            }}
-                                        >
-                                            拒否
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
-                        {/* フレンド一覧 */}
-                        {friends.map(friend => (
-                            <div key={friend.id} style={{
-                                padding: '8px 20px',
-                                cursor: 'pointer',
-                                transition: 'background-color 0.1s ease'
-                            }}
-                                 onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#36393f'}
-                                 onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>
-                                <div style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'space-between'
-                                }}>
-                                    <div style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '12px'
-                                    }}>
-                                        <div style={{
-                                            width: '32px',
-                                            height: '32px',
-                                            borderRadius: '50%',
-                                            backgroundColor: '#5865f2',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            color: 'white',
-                                            fontSize: '14px',
-                                            fontWeight: '600'
-                                        }}>
-                                            {(friend.friendName || '匿').charAt(0).toUpperCase()}
-                                        </div>
-                                        <div>
-                                            <div style={{
-                                                color: '#dcddde',
-                                                fontSize: '14px',
-                                                fontWeight: '500'
-                                            }}>
-                                                {friend.friendName}
-                                            </div>
-                                            <div style={{
-                                                color: '#b9bbbe',
-                                                fontSize: '12px'
-                                            }}>
-                                                オンライン
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <button
-                                        onClick={() => handleStartDM(friend.friendId, friend.friendName)}
-                                        style={{
-                                            backgroundColor: '#5865f2',
-                                            color: 'white',
-                                            border: 'none',
-                                            borderRadius: '3px',
-                                            padding: '4px 8px',
-                                            fontSize: '10px',
-                                            cursor: 'pointer'
-                                        }}
-                                    >
-                                        メッセージ
-                                    </button>
-                                </div>
-                            </div>
-                        ))}
-                        {friends.length === 0 && friendRequests.length === 0 && (
-                            <div style={{
-                                padding: '40px 20px',
-                                textAlign: 'center',
-                                color: '#72767d',
-                                fontSize: '14px'
-                            }}>
-                                フレンドがいません<br />
-                                「追加」タブからフレンドを追加してみましょう
-                            </div>
-                        )}
-                    </div>
-                )}
-                {/* DMタブ */}
-                {activeTab === "dms" && (
-                    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-                        <div style={{ padding: '12px 0', height: '100%', overflowY: 'auto' }}>
-                            {dmChannels.map(dm => (
-                                <div key={dm.id} style={{
-                                    padding: '8px 20px',
-                                    cursor: 'pointer',
-                                    transition: 'background-color 0.1s ease',
-                                    backgroundColor: currentDM?.id === dm.id ? '#40444b' : 'transparent'
-                                }}
-                                     onClick={() => handleSelectDM(dm)}
-                                     onMouseOver={(e) => {
-                                         if (currentDM?.id !== dm.id) {
-                                             e.currentTarget.style.backgroundColor = '#36393f';
-                                         }
-                                     }}
-                                     onMouseOut={(e) => {
-                                         if (currentDM?.id !== dm.id) {
-                                             e.currentTarget.style.backgroundColor = 'transparent';
-                                         }
-                                     }}>
-                                    <div style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '12px'
-                                    }}>
-                                        <div style={{
-                                            width: '32px',
-                                            height: '32px',
-                                            borderRadius: '50%',
-                                            backgroundColor: '#5865f2',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            color: 'white',
-                                            fontSize: '14px',
-                                            fontWeight: '600'
-                                        }}>
-                                            {getOtherParticipantName(dm).charAt(0).toUpperCase()}
-                                        </div>
-                                        <div>
-                                            <div style={{
-                                                color: '#dcddde',
-                                                fontSize: '14px',
-                                                fontWeight: '500'
-                                            }}>
-                                                {getOtherParticipantName(dm)}
-                                            </div>
-                                            <div style={{
-                                                color: '#b9bbbe',
-                                                fontSize: '12px'
-                                            }}>
-                                                ダイレクトメッセージ
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
-                            {dmChannels.length === 0 && (
-                                <div style={{
-                                    padding: '40px 20px',
-                                    textAlign: 'center',
-                                    color: '#72767d',
-                                    fontSize: '14px'
-                                }}>
-                                    DMがありません<br />
-                                    フレンドとメッセージを始めてみましょう
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                )}
-                {/* フレンド追加タブ */}
-                {activeTab === "add" && (
-                    <div style={{
-                        padding: '20px',
-                        height: '100%',
-                        overflowY: 'auto'
-                    }}>
-                        <div style={{
-                            marginBottom: '16px'
-                        }}>
-                            <label style={{
-                                display: 'block',
-                                color: '#b9bbbe',
-                                fontSize: '12px',
-                                fontWeight: '600',
-                                marginBottom: '8px'
-                            }}>
-                                メールアドレスで検索
-                            </label>
-                            <div style={{
-                                display: 'flex',
-                                gap: '8px'
-                            }}>
-                                <input
-                                    type="email"
-                                    value={searchEmail}
-                                    onChange={(e) => setSearchEmail(e.target.value)}
-                                    placeholder="example@email.com"
-                                    style={{
-                                        flex: 1,
-                                        padding: '8px 12px',
-                                        backgroundColor: '#40444b',
-                                        border: 'none',
-                                        borderRadius: '4px',
-                                        color: '#dcddde',
-                                        fontSize: '14px',
-                                        outline: 'none'
-                                    }}
-                                />
-                                <button
-                                    onClick={handleSendFriendRequest}
-                                    disabled={!searchEmail.trim() || searchEmail === user.email}
-                                    style={{
-                                        backgroundColor: (searchEmail.trim() && searchEmail !== user.email) ? '#5865f2' : '#4f545c',
-                                        color: 'white',
-                                        border: 'none',
-                                        borderRadius: '4px',
-                                        padding: '8px 16px',
-                                        cursor: (searchEmail.trim() && searchEmail !== user.email) ? 'pointer' : 'not-allowed',
-                                        fontSize: '12px',
-                                        fontWeight: '500'
-                                    }}
-                                >
-                                    送信
-                                </button>
-                            </div>
-                        </div>
-                        <div style={{
-                            backgroundColor: '#40444b',
-                            borderRadius: '4px',
-                            padding: '16px',
-                            fontSize: '12px',
-                            color: '#b9bbbe',
-                            lineHeight: '1.5'
-                        }}>
-                            <strong>フレンドの追加方法：</strong><br />
-                            相手のメールアドレスを入力してフレンドリクエストを送信してください。
-                            相手が承認すると、フレンドリストに表示され、ダイレクトメッセージができるようになります。
-                        </div>
-                    </div>
-                )}
-            </div>
-        </div>
+    // オーナーをメンバーとして追加（オーナーロールを付与）
+    await addMemberToServer(serverRef.id, ownerId, ownerName, [roleIds['オーナー']]);
+
+    // デフォルトチャンネル作成
+    await createChannel('一般', 'text', serverRef.id, ownerId);
+
+    return serverRef.id;
+};
+
+export const getUserServers = (userId, callback, errorCallback) => {
+    console.log('getUserServers 呼び出し - ユーザーID:', userId);
+    const q = query(
+        collection(db, 'servers'),
+        where('members', 'array-contains', userId)
     );
+    console.log('Firestore クエリ作成完了');
+    return onSnapshot(q, callback, errorCallback);
+};
+
+export const joinServer = async (serverId, userId) => {
+    const serverRef = doc(db, 'servers', serverId);
+    await updateDoc(serverRef, {
+        members: arrayUnion(userId)
+    });
+};
+
+// チャンネル関連
+export const createChannel = async (name, type, serverId, creatorId) => {
+    const channelData = {
+        name,
+        type, // 'text' or 'voice'
+        serverId,
+        creatorId,
+        createdAt: serverTimestamp(),
+        members: [],
+        permissions: {}
+    };
+    return await addDoc(collection(db, 'channels'), channelData);
+};
+
+export const getServerChannels = (serverId, callback) => {
+    const q = query(
+        collection(db, 'channels'),
+        where('serverId', '==', serverId)
+    );
+    return onSnapshot(q, callback);
+};
+
+export const deleteChannel = async (channelId) => {
+    await deleteDoc(doc(db, 'channels', channelId));
+};
+
+// メッセージ関連
+export const sendMessage = async (channelId, userId, userName, content, replyTo = null) => {
+    const messageData = {
+        channelId,
+        userId,
+        userName,
+        content,
+        timestamp: serverTimestamp(),
+        reactions: {},
+        edited: false,
+        replyTo
+    };
+    return await addDoc(collection(db, 'messages'), messageData);
+};
+
+export const getChannelMessages = (channelId, callback) => {
+    const q = query(
+        collection(db, 'messages'),
+        where('channelId', '==', channelId)
+    );
+    return onSnapshot(q, callback);
+};
+
+export const editMessage = async (messageId, newContent) => {
+    const messageRef = doc(db, 'messages', messageId);
+    await updateDoc(messageRef, {
+        content: newContent,
+        edited: true,
+        editedAt: serverTimestamp()
+    });
+};
+
+export const deleteMessage = async (messageId) => {
+    await deleteDoc(doc(db, 'messages', messageId));
+};
+
+export const addReaction = async (messageId, userId, emoji) => {
+    const messageRef = doc(db, 'messages', messageId);
+    const messageDoc = await getDoc(messageRef);
+    const reactions = messageDoc.data().reactions || {};
+    if (!reactions[emoji]) {
+        reactions[emoji] = [];
+    }
+    if (!reactions[emoji].includes(userId)) {
+        reactions[emoji].push(userId);
+    }
+    await updateDoc(messageRef, { reactions });
+};
+
+export const removeReaction = async (messageId, userId, emoji) => {
+    const messageRef = doc(db, 'messages', messageId);
+    const messageDoc = await getDoc(messageRef);
+    const reactions = messageDoc.data().reactions || {};
+    if (reactions[emoji]) {
+        reactions[emoji] = reactions[emoji].filter(id => id !== userId);
+        if (reactions[emoji].length === 0) {
+            delete reactions[emoji];
+        }
+    }
+    await updateDoc(messageRef, { reactions });
+};
+
+// フレンド関連の関数
+// ユーザーのフレンド一覧を取得
+export default function getUserFriends(userId, callback, errorCallback) {
+    try {
+        const friendsRef = collection(db, 'friends');
+        const q = query(
+            friendsRef,
+            where('participants', 'array-contains', userId),
+            where('status', '==', 'accepted')
+        );
+        return onSnapshot(q, callback, errorCallback);
+    } catch (error) {
+        console.error('フレンド取得エラー:', error);
+        if (errorCallback) errorCallback(error);
+    }
 }
+
+
+// フレンドリクエストを送信
+export const sendFriendRequest = async (senderId, senderName, receiverEmail) => {
+    try {
+        // 受信者のユーザー情報を取得
+        const usersRef = collection(db, 'users');
+        const q = query(usersRef, where('email', '==', receiverEmail));
+        const querySnapshot = await getDocs(q);
+
+        if (querySnapshot.empty) {
+            throw new Error('指定されたメールアドレスのユーザーが見つかりません');
+        }
+
+        const receiverDoc = querySnapshot.docs[0];
+        const receiverId = receiverDoc.id;
+        const receiverData = receiverDoc.data();
+
+        if (receiverId === senderId) {
+            throw new Error('自分自身にフレンドリクエストを送ることはできません');
+        }
+
+        // 既存のフレンド関係をチェック
+        const friendsRef = collection(db, 'friends');
+        const existingQuery = query(
+            friendsRef,
+            where('participants', 'array-contains', senderId)
+        );
+        const existingSnapshot = await getDocs(existingQuery);
+
+        const existingFriend = existingSnapshot.docs.find(doc =>
+            doc.data().participants.includes(receiverId)
+        );
+
+        if (existingFriend) {
+            const status = existingFriend.data().status;
+            if (status === 'accepted') {
+                throw new Error('既にフレンドです');
+            } else if (status === 'pending') {
+                throw new Error('既にフレンドリクエストを送信済みです');
+            }
+        }
+
+        // フレンドリクエストを作成
+        await addDoc(friendsRef, {
+            senderId,
+            senderName,
+            receiverId,
+            receiverName: receiverData.displayName || '匿名',
+            participants: [senderId, receiverId],
+            status: 'pending',
+            createdAt: serverTimestamp()
+        });
+
+        console.log('フレンドリクエスト送信完了');
+        return true;
+    } catch (error) {
+        console.error('フレンドリクエスト送信エラー:', error);
+        throw error;
+    }
+};
+
+// フレンドリクエストを承認
+export const acceptFriendRequest = async (requestId, currentUserId, currentUserName, senderId, senderName) => {
+    try {
+        const friendRef = doc(db, 'friends', requestId);
+        await updateDoc(friendRef, {
+            status: 'accepted',
+            acceptedAt: serverTimestamp()
+        });
+
+        // DMチャンネルを作成
+        await createDMChannel(currentUserId, senderId, currentUserName, senderName);
+
+        console.log('フレンドリクエスト承認完了');
+    } catch (error) {
+        console.error('フレンドリクエスト承認エラー:', error);
+        throw error;
+    }
+};
+
+// フレンドリクエストを拒否
+export const declineFriendRequest = async (requestId) => {
+    try {
+        const friendRef = doc(db, 'friends', requestId);
+        await deleteDoc(friendRef);
+        console.log('フレンドリクエスト拒否完了');
+    } catch (error) {
+        console.error('フレンドリクエスト拒否エラー:', error);
+        throw error;
+    }
+};
+
+// ユーザーのフレンドリクエスト一覧を取得
+export const getFriendRequests = (userId, callback, errorCallback) => {
+    try {
+        const friendsRef = collection(db, 'friends');
+        const q = query(
+            friendsRef,
+            where('receiverId', '==', userId),
+            where('status', '==', 'pending')
+        );
+        return onSnapshot(q, callback, errorCallback);
+    } catch (error) {
+        console.error('フレンドリクエスト取得エラー:', error);
+        if (errorCallback) errorCallback(error);
+    }
+};
+
+// フレンドをブロック
+export const blockFriend = async (userId, friendId) => {
+    try {
+        const blocksRef = collection(db, 'blocks');
+        await addDoc(blocksRef, {
+            userId,
+            blockedUserId: friendId,
+            createdAt: serverTimestamp()
+        });
+
+        // フレンド関係を削除
+        const friendsRef = collection(db, 'friends');
+        const q = query(
+            friendsRef,
+            where('participants', 'array-contains', userId)
+        );
+        const querySnapshot = await getDocs(q);
+        const friendDoc = querySnapshot.docs.find(doc =>
+            doc.data().participants.includes(friendId)
+        );
+
+        if (friendDoc) {
+            await deleteDoc(doc(db, 'friends', friendDoc.id));
+        }
+
+        console.log('ユーザーをブロックしました');
+    } catch (error) {
+        console.error('ブロックエラー:', error);
+        throw error;
+    }
+};
+
+// ブロックを解除
+export const unblockFriend = async (userId, friendId) => {
+    try {
+        const blocksRef = collection(db, 'blocks');
+        const q = query(
+            blocksRef,
+            where('userId', '==', userId),
+            where('blockedUserId', '==', friendId)
+        );
+        const querySnapshot = await getDocs(q);
+
+        querySnapshot.docs.forEach(async (blockDoc) => {
+            await deleteDoc(doc(db, 'blocks', blockDoc.id));
+        });
+
+        console.log('ブロックを解除しました');
+    } catch (error) {
+        console.error('ブロック解除エラー:', error);
+        throw error;
+    }
+};
+
+// ブロックされたユーザー一覧を取得
+export const getBlockedUsers = (userId, callback, errorCallback) => {
+    try {
+        const blocksRef = collection(db, 'blocks');
+        const q = query(
+            blocksRef,
+            where('userId', '==', userId)
+        );
+        return onSnapshot(q, callback, errorCallback);
+    } catch (error) {
+        console.error('ブロック一覧取得エラー:', error);
+        if (errorCallback) errorCallback(error);
+    }
+};
+
+// DM関連の関数
+// ユーザーのDMチャンネル一覧を取得
+export const getUserDMs = (userId, callback, errorCallback) => {
+    try {
+        const channelsRef = collection(db, 'channels');
+        const q = query(
+            channelsRef,
+            where('type', '==', 'dm'),
+            where('participants', 'array-contains', userId),
+            orderBy('lastMessageAt', 'desc')
+        );
+        return onSnapshot(q, callback, errorCallback);
+    } catch (error) {
+        console.error('DM取得エラー:', error);
+        // lastMessageAtでソートできない場合はcreatedAtでソート
+        const channelsRef = collection(db, 'channels');
+        const q = query(
+            channelsRef,
+            where('type', '==', 'dm'),
+            where('participants', 'array-contains', userId),
+            orderBy('createdAt', 'desc')
+        );
+        return onSnapshot(q, callback, errorCallback);
+    }
+};
+
+// DMチャンネルを作成
+export const createDMChannel = async (userId, friendId, userName, friendName) => {
+    try {
+        // 既存のDMチャンネルがあるかチェック
+        const channelsRef = collection(db, 'channels');
+        const q = query(
+            channelsRef,
+            where('type', '==', 'dm'),
+            where('participants', 'array-contains', userId)
+        );
+        const querySnapshot = await getDocs(q);
+
+        const existingDM = querySnapshot.docs.find(doc => {
+            const data = doc.data();
+            return data.participants.includes(friendId) && data.participants.includes(userId);
+        });
+
+        if (existingDM) {
+            return {
+                id: existingDM.id,
+                ...existingDM.data()
+            };
+        }
+
+        // 新しいDMチャンネルを作成
+        const dmRef = await addDoc(channelsRef, {
+            type: 'dm',
+            participants: [userId, friendId],
+            participantNames: {
+                [userId]: userName,
+                [friendId]: friendName
+            },
+            createdAt: serverTimestamp(),
+            lastMessage: null,
+            lastMessageAt: null
+        });
+
+        console.log('DMチャンネル作成完了:', dmRef.id);
+        return {
+            id: dmRef.id,
+            type: 'dm',
+            participants: [userId, friendId],
+            participantNames: {
+                [userId]: userName,
+                [friendId]: friendName
+            }
+        };
+    } catch (error) {
+        console.error('DMチャンネル作成エラー:', error);
+        throw error;
+    }
+};
+
+// DMにメッセージを送信
+export const sendDMMessage = async (channelId, userId, userName, content, replyToId = null) => {
+    try {
+        // メッセージを追加
+        const messagesRef = collection(db, 'messages');
+        const messageData = {
+            channelId,
+            userId,
+            userName,
+            content,
+            timestamp: serverTimestamp(),
+            edited: false
+        };
+
+        if (replyToId) {
+            // 返信先のメッセージ内容を取得
+            const replyToRef = doc(db, 'messages', replyToId);
+            const replyToDoc = await getDoc(replyToRef);
+            if (replyToDoc.exists()) {
+                messageData.replyTo = replyToDoc.data().content.substring(0, 50) + (replyToDoc.data().content.length > 50 ? '...' : '');
+                messageData.replyToId = replyToId;
+            }
+        }
+
+        await addDoc(messagesRef, messageData);
+
+        // DMチャンネルの最終メッセージ情報を更新
+        const channelRef = doc(db, 'channels', channelId);
+        await updateDoc(channelRef, {
+            lastMessage: content.substring(0, 50) + (content.length > 50 ? '...' : ''),
+            lastMessageAt: serverTimestamp(),
+            lastMessageUserId: userId,
+            lastMessageUserName: userName
+        });
+
+        console.log('DMメッセージ送信完了');
+    } catch (error) {
+        console.error('DMメッセージ送信エラー:', error);
+        throw error;
+    }
+};
+
+// DMチャンネルを非表示
+export const hideDMChannel = async (channelId, userId) => {
+    try {
+        // DMチャンネルに非表示フラグを追加
+        const channelRef = doc(db, 'channels', channelId);
+        const channelDoc = await getDoc(channelRef);
+        if (channelDoc.exists()) {
+            const data = channelDoc.data();
+            const hiddenFor = data.hiddenFor || [];
+            if (!hiddenFor.includes(userId)) {
+                hiddenFor.push(userId);
+                await updateDoc(channelRef, {
+                    hiddenFor
+                });
+            }
+        }
+        console.log('DMチャンネルを非表示にしました');
+    } catch (error) {
+        console.error('DMチャンネル非表示エラー:', error);
+        throw error;
+    }
+};
+
+// DMチャンネルを表示
+export const showDMChannel = async (channelId, userId) => {
+    try {
+        const channelRef = doc(db, 'channels', channelId);
+        const channelDoc = await getDoc(channelRef);
+        if (channelDoc.exists()) {
+            const data = channelDoc.data();
+            const hiddenFor = data.hiddenFor || [];
+            const newHiddenFor = hiddenFor.filter(id => id !== userId);
+            await updateDoc(channelRef, {
+                hiddenFor: newHiddenFor
+            });
+        }
+        console.log('DMチャンネルを表示しました');
+    } catch (error) {
+        console.error('DMチャンネル表示エラー:', error);
+        throw error;
+    }
+};
+
+// オンラインステータス更新
+export const updateOnlineStatus = async (userId, status) => {
+    try {
+        const userRef = doc(db, 'users', userId);
+        await updateDoc(userRef, {
+            onlineStatus: status,
+            lastSeen: serverTimestamp()
+        });
+    } catch (error) {
+        console.error('オンラインステータス更新エラー:', error);
+        throw error;
+    }
+};
+
+// ユーザーのオンラインステータスを取得
+export const getUserOnlineStatus = (userId, callback, errorCallback) => {
+    try {
+        const userRef = doc(db, 'users', userId);
+        return onSnapshot(userRef, callback, errorCallback);
+    } catch (error) {
+        console.error('オンラインステータス取得エラー:', error);
+        if (errorCallback) errorCallback(error);
+    }
+};
+
+// サーバーメンバー管理
+export const getServerMembers = (serverId, callback) => {
+    const q = query(
+        collection(db, 'serverMembers'),
+        where('serverId', '==', serverId)
+    );
+    return onSnapshot(q, callback);
+};
+
+export const addMemberToServer = async (serverId, userId, userName, roles = []) => {
+    // @everyoneロールを取得
+    const everyoneRoleQuery = query(
+        collection(db, 'serverRoles'),
+        where('serverId', '==', serverId),
+        where('isDefault', '==', true)
+    );
+    const everyoneSnapshot = await getDocs(everyoneRoleQuery);
+    const everyoneRoleId = everyoneSnapshot.docs[0]?.id;
+
+    const memberRoles = roles.length > 0 ? roles : (everyoneRoleId ? [everyoneRoleId] : []);
+
+    const memberData = {
+        serverId,
+        uid: userId,
+        displayName: userName,
+        roles: memberRoles,
+        joinedAt: serverTimestamp(),
+        avatar: null
+    };
+
+    // サーバーのメンバーリストにも追加
+    const serverRef = doc(db, 'servers', serverId);
+    await updateDoc(serverRef, {
+        members: arrayUnion(userId)
+    });
+
+    return await addDoc(collection(db, 'serverMembers'), memberData);
+};
+
+export const updateMemberRoles = async (serverId, userId, newRoles) => {
+    const q = query(
+        collection(db, 'serverMembers'),
+        where('serverId', '==', serverId),
+        where('uid', '==', userId)
+    );
+    const snapshot = await getDocs(q);
+    if (!snapshot.empty) {
+        const memberDoc = snapshot.docs[0];
+        await updateDoc(memberDoc.ref, { roles: newRoles });
+    }
+};
+
+// メンバーの権限チェック
+export const getMemberPermissions = async (serverId, userId) => {
+    const memberQuery = query(
+        collection(db, 'serverMembers'),
+        where('serverId', '==', serverId),
+        where('uid', '==', userId)
+    );
+    const memberSnapshot = await getDocs(memberQuery);
+    if (memberSnapshot.empty) return [];
+
+    const member = memberSnapshot.docs[0].data();
+    const roleIds = member.roles || [];
+    if (roleIds.length === 0) return [];
+
+    // ロールの権限を取得
+    const roleQuery = query(
+        collection(db, 'serverRoles'),
+        where('serverId', '==', serverId)
+    );
+    const roleSnapshot = await getDocs(roleQuery);
+    const roles = roleSnapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .filter(role => roleIds.includes(role.id));
+
+    // 全ての権限をマージ
+    const permissions = new Set();
+    roles.forEach(role => {
+        if (role.permissions) {
+            role.permissions.forEach(permission => permissions.add(permission));
+        }
+    });
+
+    return Array.from(permissions);
+};
+
+// 権限チェック関数
+export const hasPermission = (permissions, requiredPermission) => {
+    return permissions.includes(DEFAULT_PERMISSIONS.ADMINISTRATOR) ||
+        permissions.includes(requiredPermission);
+};
+
+export const removeMemberFromServer = async (serverId, userId) => {
+    // サーバーメンバーコレクションから削除
+    const q = query(
+        collection(db, 'serverMembers'),
+        where('serverId', '==', serverId),
+        where('uid', '==', userId)
+    );
+    const snapshot = await getDocs(q);
+    if (!snapshot.empty) {
+        await deleteDoc(snapshot.docs[0].ref);
+    }
+
+    // サーバーのメンバーリストからも削除
+    const serverRef = doc(db, 'servers', serverId);
+    await updateDoc(serverRef, {
+        members: arrayRemove(userId)
+    });
+};
+
+// 権限管理システム
+export const DEFAULT_PERMISSIONS = {
+    // 一般管理
+    ADMINISTRATOR: 'administrator',
+    MANAGE_SERVER: 'manage_server',
+    MANAGE_ROLES: 'manage_roles',
+    MANAGE_CHANNELS: 'manage_channels',
+    // メッセージ・チャット操作
+    SEND_MESSAGES: 'send_messages',
+    EDIT_DELETE_MESSAGES: 'edit_delete_messages',
+    PIN_MESSAGES: 'pin_messages',
+    EMBED_LINKS: 'embed_links',
+    ATTACH_FILES: 'attach_files',
+    MENTION_EVERYONE: 'mention_everyone',
+    USE_EXTERNAL_EMOJIS: 'use_external_emojis',
+    // メンバー管理
+    VIEW_MEMBERS: 'view_members',
+    ADD_FRIENDS: 'add_friends',
+    MANAGE_MEMBERS: 'manage_members',
+    ASSIGN_ROLES: 'assign_roles'
+};
+
+export const DEFAULT_ROLES = [
+    {
+        name: 'オーナー',
+        color: '#f04747',
+        permissions: Object.values(DEFAULT_PERMISSIONS),
+        position: 100,
+        isDefault: false,
+        canBeDeleted: false
+    },
+    {
+        name: '管理者',
+        color: '#f04747',
+        permissions: [
+            DEFAULT_PERMISSIONS.MANAGE_SERVER,
+            DEFAULT_PERMISSIONS.MANAGE_ROLES,
+            DEFAULT_PERMISSIONS.MANAGE_CHANNELS,
+            DEFAULT_PERMISSIONS.SEND_MESSAGES,
+            DEFAULT_PERMISSIONS.EDIT_DELETE_MESSAGES,
+            DEFAULT_PERMISSIONS.PIN_MESSAGES,
+            DEFAULT_PERMISSIONS.EMBED_LINKS,
+            DEFAULT_PERMISSIONS.ATTACH_FILES,
+            DEFAULT_PERMISSIONS.MENTION_EVERYONE,
+            DEFAULT_PERMISSIONS.USE_EXTERNAL_EMOJIS,
+            DEFAULT_PERMISSIONS.VIEW_MEMBERS,
+            DEFAULT_PERMISSIONS.MANAGE_MEMBERS,
+            DEFAULT_PERMISSIONS.ASSIGN_ROLES
+        ],
+        position: 90,
+        isDefault: false,
+        canBeDeleted: true
+    },
+    {
+        name: 'モデレーター',
+        color: '#5865f2',
+        permissions: [
+            DEFAULT_PERMISSIONS.SEND_MESSAGES,
+            DEFAULT_PERMISSIONS.EDIT_DELETE_MESSAGES,
+            DEFAULT_PERMISSIONS.PIN_MESSAGES,
+            DEFAULT_PERMISSIONS.EMBED_LINKS,
+            DEFAULT_PERMISSIONS.ATTACH_FILES,
+            DEFAULT_PERMISSIONS.VIEW_MEMBERS,
+            DEFAULT_PERMISSIONS.MANAGE_MEMBERS
+        ],
+        position: 80,
+        isDefault: false,
+        canBeDeleted: true
+    },
+    {
+        name: '@everyone',
+        color: '#99aab5',
+        permissions: [
+            DEFAULT_PERMISSIONS.SEND_MESSAGES,
+            DEFAULT_PERMISSIONS.EMBED_LINKS,
+            DEFAULT_PERMISSIONS.ATTACH_FILES,
+            DEFAULT_PERMISSIONS.VIEW_MEMBERS,
+            DEFAULT_PERMISSIONS.ADD_FRIENDS
+        ],
+        position: 0,
+        isDefault: true,
+        canBeDeleted: false
+    }
+];
+
+// サーバー設定
+export const updateServerSettings = async (serverId, settings) => {
+    const serverRef = doc(db, 'servers', serverId);
+    await updateDoc(serverRef, settings);
+};
+
+// ユーザー検索とメンバー招待
+export const searchUserByEmail = async (email) => {
+    try {
+        // まずusersコレクションで検索
+        const q = query(
+            collection(db, 'users'),
+            where('email', '==', email)
+        );
+        const snapshot = await getDocs(q);
+        const users = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        }));
+
+        if (users.length > 0) {
+            return users;
+        }
+
+        // usersコレクションにない場合は、Firebase Authから検索
+        // 実際の実装では、サーバーサイドでAdmin SDKを使用する必要があります
+        // ここでは仮のユーザーデータを返すか、エラーハンドリングを改善
+        return [];
+    } catch (error) {
+        console.error('ユーザー検索エラー:', error);
+        return [];
+    }
+};
+
+export const inviteUserToServer = async (serverId, userEmail, inviterName) => {
+    const users = await searchUserByEmail(userEmail);
+    if (users.length === 0) {
+        // ユーザーが見つからない場合は、メール招待として処理
+        const inviteData = {
+            serverId,
+            userId: null, // 未登録ユーザー
+            userEmail: userEmail,
+            userName: null,
+            inviterName,
+            status: 'pending',
+            type: 'email_invite', // メール招待フラグ
+            createdAt: serverTimestamp()
+        };
+        return await addDoc(collection(db, 'serverInvites'), inviteData);
+    }
+
+    const user = users[0];
+
+    // 既にサーバーのメンバーかチェック
+    const memberQuery = query(
+        collection(db, 'serverMembers'),
+        where('serverId', '==', serverId),
+        where('uid', '==', user.uid || user.id)
+    );
+    const memberSnapshot = await getDocs(memberQuery);
+    if (!memberSnapshot.empty) {
+        throw new Error('このユーザーは既にサーバーのメンバーです');
+    }
+
+    const inviteData = {
+        serverId,
+        userId: user.uid || user.id,
+        userEmail: user.email,
+        userName: user.displayName || '匿名',
+        inviterName,
+        status: 'pending',
+        type: 'user_invite',
+        createdAt: serverTimestamp()
+    };
+    return await addDoc(collection(db, 'serverInvites'), inviteData);
+};
+
+export const getServerInvites = (userId, callback) => {
+    const q = query(
+        collection(db, 'serverInvites'),
+        where('userId', '==', userId),
+        where('status', '==', 'pending')
+    );
+    return onSnapshot(q, callback);
+};
+
+export const acceptServerInvite = async (inviteId, serverId, userId, userName) => {
+    await addMemberToServer(serverId, userId, userName);
+    await deleteDoc(doc(db, 'serverInvites', inviteId));
+};
+
+export const declineServerInvite = async (inviteId) => {
+    await deleteDoc(doc(db, 'serverInvites', inviteId));
+};
+
+// ユーザー情報の保存（初回ログイン時）
+export const saveUserInfo = async (userId, userData) => {
+    const userRef = doc(db, 'users', userId);
+    try {
+        await updateDoc(userRef, {
+            ...userData,
+            lastLogin: serverTimestamp()
+        });
+    } catch (error) {
+        // ドキュメントが存在しない場合は新規作成
+        await addDoc(collection(db, 'users'), {
+            uid: userId,
+            ...userData,
+            avatar: null,
+            status: 'online',
+            createdAt: serverTimestamp(),
+            lastLogin: serverTimestamp()
+        });
+    }
+};
+
+// ユーザープロフィール更新
+export const updateUserProfile = async (userId, profileData) => {
+    const userQuery = query(
+        collection(db, 'users'),
+        where('uid', '==', userId)
+    );
+    const snapshot = await getDocs(userQuery);
+    if (!snapshot.empty) {
+        const userDoc = snapshot.docs[0];
+        await updateDoc(userDoc.ref, {
+            ...profileData,
+            updatedAt: serverTimestamp()
+        });
+    }
+};
+
+// ユーザーステータス更新
+export const updateUserStatus = async (userId, status) => {
+    const userQuery = query(
+        collection(db, 'users'),
+        where('uid', '==', userId)
+    );
+    const snapshot = await getDocs(userQuery);
+    if (!snapshot.empty) {
+        const userDoc = snapshot.docs[0];
+        await updateDoc(userDoc.ref, {
+            status,
+            lastSeen: serverTimestamp()
+        });
+    }
+};
+
+// オンラインユーザー取得
+export const getOnlineUsers = (callback) => {
+    const q = query(
+        collection(db, 'users'),
+        where('status', '==', 'online')
+    );
+    return onSnapshot(q, callback);
+};
+
+// 画像アップロード関連
+export const uploadImage = async (file, folder = 'images') => {
+    // ファイルをBase64に変換
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = async () => {
+            try {
+                const imageData = {
+                    data: reader.result,
+                    name: file.name,
+                    type: file.type,
+                    size: file.size,
+                    folder,
+                    uploadedAt: serverTimestamp()
+                };
+                const imageRef = await addDoc(collection(db, 'images'), imageData);
+                resolve({
+                    id: imageRef.id,
+                    url: reader.result,
+                    name: file.name,
+                    type: file.type
+                });
+            } catch (error) {
+                reject(error);
+            }
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+};
+
+export const getImage = async (imageId) => {
+    const imageDoc = await getDoc(doc(db, 'images', imageId));
+    if (imageDoc.exists()) {
+        return { id: imageDoc.id, ...imageDoc.data() };
+    }
+    return null;
+};
+
+// ユーザーアバター更新
+export const updateUserAvatar = async (userId, imageId) => {
+    const userQuery = query(
+        collection(db, 'users'),
+        where('uid', '==', userId)
+    );
+    const snapshot = await getDocs(userQuery);
+    if (!snapshot.empty) {
+        const userDoc = snapshot.docs[0];
+        await updateDoc(userDoc.ref, { avatar: imageId });
+    }
+};
+
+// サーバーアイコン更新
+export const updateServerIcon = async (serverId, imageId) => {
+    const serverRef = doc(db, 'servers', serverId);
+    await updateDoc(serverRef, { icon: imageId });
+};
+
+// サーバー削除
+export const deleteServer = async (serverId, userId) => {
+    // サーバーの所有者チェック
+    const serverDoc = await getDoc(doc(db, 'servers', serverId));
+    if (!serverDoc.exists()) {
+        throw new Error('サーバーが見つかりません');
+    }
+    const serverData = serverDoc.data();
+    if (serverData.ownerId !== userId) {
+        throw new Error('サーバーを削除する権限がありません');
+    }
+
+    // サーバーに関連するデータを削除
+    // 1. チャンネル削除
+    const channelsQuery = query(
+        collection(db, 'channels'),
+        where('serverId', '==', serverId)
+    );
+    const channelsSnapshot = await getDocs(channelsQuery);
+    for (const channelDoc of channelsSnapshot.docs) {
+        await deleteDoc(channelDoc.ref);
+        // チャンネルのメッセージも削除
+        const messagesQuery = query(
+            collection(db, 'messages'),
+            where('channelId', '==', channelDoc.id)
+        );
+        const messagesSnapshot = await getDocs(messagesQuery);
+        for (const messageDoc of messagesSnapshot.docs) {
+            await deleteDoc(messageDoc.ref);
+        }
+    }
+
+    // 2. サーバーメンバー削除
+    const membersQuery = query(
+        collection(db, 'serverMembers'),
+        where('serverId', '==', serverId)
+    );
+    const membersSnapshot = await getDocs(membersQuery);
+    for (const memberDoc of membersSnapshot.docs) {
+        await deleteDoc(memberDoc.ref);
+    }
+
+    // 3. サーバーロール削除
+    const rolesQuery = query(
+        collection(db, 'serverRoles'),
+        where('serverId', '==', serverId)
+    );
+    const rolesSnapshot = await getDocs(rolesQuery);
+    for (const roleDoc of rolesSnapshot.docs) {
+        await deleteDoc(roleDoc.ref);
+    }
+
+    // 4. サーバー招待削除
+    const invitesQuery = query(
+        collection(db, 'serverInvites'),
+        where('serverId', '==', serverId)
+    );
+    const invitesSnapshot = await getDocs(invitesQuery);
+    for (const inviteDoc of invitesSnapshot.docs) {
+        await deleteDoc(inviteDoc.ref);
+    }
+
+    // 5. サーバー削除
+    await deleteDoc(doc(db, 'servers', serverId));
+};
+
+// メッセージに画像添付
+export const sendMessageWithImage = async (channelId, userId, userName, content, imageId, replyTo = null) => {
+    const messageData = {
+        channelId,
+        userId,
+        userName,
+        content,
+        timestamp: serverTimestamp(),
+        reactions: {},
+        edited: false,
+        replyTo,
+        attachments: imageId ? [{ type: 'image', id: imageId }] : []
+    };
+    return await addDoc(collection(db, 'messages'), messageData);
+};
+
+export const getServerRoles = (serverId, callback) => {
+    const q = query(
+        collection(db, 'serverRoles'),
+        where('serverId', '==', serverId),
+        orderBy('position', 'asc')
+    );
+    return onSnapshot(q, callback);
+};
+
+export const createServerRole = async (serverId, roleData) => {
+    const role = {
+        serverId,
+        ...roleData,
+        createdAt: serverTimestamp()
+    };
+    return await addDoc(collection(db, 'serverRoles'), role);
+};
+
+export const updateServerRole = async (roleId, roleData) => {
+    const roleRef = doc(db, 'serverRoles', roleId);
+    await updateDoc(roleRef, roleData);
+};
+
+export const deleteServerRole = async (roleId) => {
+    await deleteDoc(doc(db, 'serverRoles', roleId));
+};
