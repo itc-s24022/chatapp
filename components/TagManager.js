@@ -1,13 +1,15 @@
 import { useState, useEffect } from 'react';
 import {
     updateUserTags,
-    // getAllTags, // 未使用のためコメントアウト
+    getAllTags,
     searchUsersByTag,
-    inviteUsersByTag
+    inviteUsersByTag,
+    getUserById // ← 新しくFirestoreからユーザーを取得する関数
 } from '../lib/firestore';
 
 export default function TagManager({ user, currentServer }) {
     const [userTags, setUserTags] = useState([]);
+    const [allTags, setAllTags] = useState([]);
     const [newTag, setNewTag] = useState('');
     const [tagSearch, setTagSearch] = useState('');
     const [tagUsers, setTagUsers] = useState([]);
@@ -16,24 +18,32 @@ export default function TagManager({ user, currentServer }) {
     const [inviteTag, setInviteTag] = useState('');
 
     useEffect(() => {
-        if (user) {
-            // ユーザーのタグを取得
-            const fetchUserTags = async () => {
-                try {
-                    // ここでユーザーのタグを取得するロジックを実装
-                    // 実際にはユーザードキュメントからタグを取得
-                    setUserTags(user.tags || []);
-                } catch (error) {
-                    console.error('ユーザータグ取得エラー:', error);
-                }
-            };
-            fetchUserTags();
-        }
+        if (!user) return;
+        const fetchUserTags = async () => {
+            try {
+                const userData = await getUserById(user.uid); // Firestore から取得
+                setUserTags(userData.tags || []);
+            } catch (error) {
+                console.error('ユーザータグ取得エラー:', error);
+            }
+        };
+        fetchUserTags();
     }, [user]);
+
+    useEffect(() => {
+        const fetchAllTags = async () => {
+            try {
+                const tags = await getAllTags();
+                setAllTags(tags);
+            } catch (error) {
+                console.error('タグ取得エラー:', error);
+            }
+        };
+        fetchAllTags();
+    }, []);
 
     const handleAddTag = async () => {
         if (!newTag.trim() || userTags.includes(newTag.trim())) return;
-
         try {
             const updatedTags = [...userTags, newTag.trim()];
             await updateUserTags(user.uid, updatedTags);
