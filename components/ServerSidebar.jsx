@@ -16,9 +16,10 @@ export default function ServerSidebar({
     const [showServerMenu, setShowServerMenu] = useState(null);
     const [showImageUploader, setShowImageUploader] = useState(null);
 
+
     const handleCreateServer = async () => {
         if (!serverName.trim()) return;
-
+      
         await onCreateServer(serverName.trim());
         setServerName('');
         setShowCreateModal(false);
@@ -183,6 +184,7 @@ export default function ServerSidebar({
                                         if (window.confirm(`サーバー "${server.name}" を削除しますか？この操作は取り消せません。`)) {
                                             onDeleteServer(server.id);
                                         }
+
                                         setShowServerMenu(null);
                                     }}
                                     style={{
@@ -190,7 +192,7 @@ export default function ServerSidebar({
                                         padding: '8px 12px',
                                         backgroundColor: 'transparent',
                                         border: 'none',
-                                        color: '#ed4245',
+                                        color: '#dcddde',
                                         textAlign: 'left',
                                         cursor: 'pointer',
                                         fontSize: '14px'
@@ -198,13 +200,38 @@ export default function ServerSidebar({
                                     onMouseOver={(e) => e.target.style.backgroundColor = '#40444b'}
                                     onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}
                                 >
-                                    サーバー削除
+                                    アイコン変更
                                 </button>
-                            )}
-                        </div>
-                    )}
-                </div>
-            ))}
+                                {/* サーバー削除（オーナーのみ） */}
+                                {server.ownerId === currentUser?.uid && onDeleteServer && (
+                                    <button
+                                        onClick={() => {
+                                            if (window.confirm(`サーバー "${server.name}" を削除しますか？この操作は取り消せません。`)) {
+                                                onDeleteServer(server.id);
+                                            }
+                                            setShowServerMenu(null);
+                                        }}
+                                        style={{
+                                            width: '100%',
+                                            padding: '8px 12px',
+                                            backgroundColor: 'transparent',
+                                            border: 'none',
+                                            color: '#ed4245',
+                                            textAlign: 'left',
+                                            cursor: 'pointer',
+                                            fontSize: '14px'
+                                        }}
+                                        onMouseOver={(e) => e.target.style.backgroundColor = '#40444b'}
+                                        onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}
+                                    >
+                                        サーバー削除
+                                    </button>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                ))
+            )}
 
             {/* サーバー追加ボタン */}
             <div
