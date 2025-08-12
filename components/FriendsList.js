@@ -14,7 +14,7 @@ import {
     arrayUnion,
     arrayRemove
 } from 'firebase/firestore';
-import { db,auth} from '/lib/firebase'; // Firebaseの初期化を行ったファイルをインポート
+import { db,auth} from '../lib/firebase'; // Firebaseの初期化を行ったファイルをインポート
 
 // サーバー関連
 export const createServer = async (name, ownerId, ownerName) => {
