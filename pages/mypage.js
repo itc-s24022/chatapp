@@ -1,8 +1,9 @@
-
+// pages/mypage.js
 import { useEffect, useState } from "react";
 import { onAuthStateChanged, updateProfile } from "firebase/auth";
 import { auth } from "../lib/firebase";
 import { useRouter } from "next/router";
+import TagManager from "../components/TagManager";
 
 export default function MyPage() {
     const [user, setUser] = useState(null);
@@ -29,7 +30,6 @@ export default function MyPage() {
             alert("ユーザー名を入力してください");
             return;
         }
-
         try {
             await updateProfile(auth.currentUser, {
                 displayName: newName.trim(),
@@ -157,7 +157,7 @@ export default function MyPage() {
                         }}>
                             表示名
                         </label>
-                        
+
                         {editing ? (
                             <div style={{
                                 display: 'flex',
@@ -257,6 +257,25 @@ export default function MyPage() {
                             </div>
                         )}
                     </div>
+                </div>
+
+                {/* タグ管理セクション */}
+                <div style={{
+                    backgroundColor: '#2f3136',
+                    borderRadius: '8px',
+                    padding: '24px',
+                    marginBottom: '24px',
+                    boxShadow: '0 2px 10px rgba(0,0,0,0.2)'
+                }}>
+                    <h3 style={{
+                        margin: '0 0 16px 0',
+                        fontSize: '18px',
+                        fontWeight: '600',
+                        color: '#ffffff'
+                    }}>
+                        🏷️ タグ管理
+                    </h3>
+                    <TagManager user={user} isProfilePage={true} />
                 </div>
 
                 {/* アカウント情報 */}

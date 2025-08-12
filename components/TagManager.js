@@ -1,3 +1,4 @@
+// components/TagManager.js
 import { useState, useEffect } from 'react';
 import {
     updateUserTags,
@@ -7,7 +8,7 @@ import {
     getUserById // ← 新しくFirestoreからユーザーを取得する関数
 } from '../lib/firestore';
 
-export default function TagManager({ user, currentServer }) {
+export default function TagManager({ user, currentServer, isProfilePage = false }) {
     const [userTags, setUserTags] = useState([]);
     const [allTags, setAllTags] = useState([]);
     const [newTag, setNewTag] = useState('');
@@ -68,7 +69,6 @@ export default function TagManager({ user, currentServer }) {
 
     const handleSearchByTag = async () => {
         if (!tagSearch.trim()) return;
-
         setLoading(true);
         try {
             const users = await searchUsersByTag(tagSearch.trim());
@@ -83,7 +83,6 @@ export default function TagManager({ user, currentServer }) {
 
     const handleInviteByTag = async () => {
         if (!inviteTag.trim() || !currentServer) return;
-
         setLoading(true);
         try {
             await inviteUsersByTag(currentServer.id, inviteTag.trim(), user.displayName || '匿名');
@@ -104,7 +103,7 @@ export default function TagManager({ user, currentServer }) {
             borderRadius: '8px',
             padding: '16px',
             color: '#dcddde',
-            maxWidth: '400px'
+            maxWidth: isProfilePage ? '100%' : '400px'
         }}>
             <h3 style={{
                 margin: '0 0 16px 0',
@@ -193,7 +192,7 @@ export default function TagManager({ user, currentServer }) {
             </div>
 
             {/* タグでユーザーを検索 */}
-            <div style={{ marginBottom: '24px' }}>
+            <div style={{ marginBottom: isProfilePage ? '0' : '24px' }}>
                 <h4 style={{
                     margin: '0 0 8px 0',
                     fontSize: '14px',
@@ -233,13 +232,12 @@ export default function TagManager({ user, currentServer }) {
                         {loading ? '検索中...' : '検索'}
                     </button>
                 </div>
-
                 {tagUsers.length > 0 && (
                     <div style={{
                         backgroundColor: '#40444b',
                         borderRadius: '4px',
                         padding: '8px',
-                        maxHeight: '150px',
+                        maxHeight: isProfilePage ? '300px' : '150px',
                         overflowY: 'auto'
                     }}>
                         {tagUsers.map(user => (
@@ -278,8 +276,8 @@ export default function TagManager({ user, currentServer }) {
                 )}
             </div>
 
-            {/* タグ別招待ボタン */}
-            {currentServer && (
+            {/* タグ別招待ボタン - プロフィールページでは非表示 */}
+            {!isProfilePage && currentServer && (
                 <div>
                     <button
                         onClick={() => setShowInviteModal(true)}
@@ -299,8 +297,8 @@ export default function TagManager({ user, currentServer }) {
                 </div>
             )}
 
-            {/* タグ別招待モーダル */}
-            {showInviteModal && (
+            {/* タグ別招待モーダル - プロフィールページでは非表示 */}
+            {!isProfilePage && showInviteModal && (
                 <div style={{
                     position: 'fixed',
                     top: 0,
@@ -328,7 +326,6 @@ export default function TagManager({ user, currentServer }) {
                         }}>
                             タグでユーザーを招待
                         </h3>
-
                         <div style={{ marginBottom: '16px' }}>
                             <label style={{
                                 display: 'block',
@@ -362,7 +359,6 @@ export default function TagManager({ user, currentServer }) {
                                 例: #社長 や #メンバー などのタグを入力
                             </div>
                         </div>
-
                         <div style={{
                             display: 'flex',
                             justifyContent: 'flex-end',
