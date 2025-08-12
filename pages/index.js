@@ -1,3 +1,4 @@
+//pages/index.js
 import { useEffect, useState, useRef } from "react";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { auth } from "../lib/firebase";
@@ -15,7 +16,7 @@ import {
     addReaction,
     removeReaction,
     getUserDMs,
-    createDMChannel,
+    //createDMChannel,
     sendDMMessage,
     sendFriendRequest,
     getServerMembers,
@@ -35,7 +36,7 @@ import {
 } from "../lib/firestore";
 import ServerSidebar from "../components/ServerSidebar";
 import ChannelSidebar from "../components/ChannelSidebar";
-import FriendsList from "../components/FriendsList";
+import FriendsList from "../components/FriendsList.jsx";
 import MemberList from "../components/MemberList";
 import ServerInvites from "../components/ServerInvites";
 import RoleManager from "../components/RoleManager";
@@ -1035,7 +1036,7 @@ export default function ChatPage() {
                                         alignItems: 'center'
                                     }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            <img
+                                            <image
                                                 src={imageAttachment.url}
                                                 alt="添付画像"
                                                 style={{
@@ -1420,7 +1421,7 @@ function ImageDisplay({ imageId }) {
     }
 
     return (
-        <img
+        <image
             src={imageData.data}
             alt={imageData.name}
             style={{
