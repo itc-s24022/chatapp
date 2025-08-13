@@ -1,3 +1,4 @@
+//components/ServerSidebar.jsx
 import { useState } from 'react';
 import ImageUploader from './ImageUploader';
 import { leaveServer, deleteServer } from '../lib/firestore';

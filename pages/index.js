@@ -1,4 +1,4 @@
-//pages/index.js
+// pages/index.js
 import { useEffect, useState, useRef } from "react";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { auth } from "../lib/firebase";
@@ -16,7 +16,7 @@ import {
     addReaction,
     removeReaction,
     getUserDMs,
-    //createDMChannel,
+    createDMChannel,
     sendDMMessage,
     sendFriendRequest,
     getServerMembers,
@@ -43,6 +43,7 @@ import RoleManager from "../components/RoleManager";
 import ImageUploader from "../components/ImageUploader";
 import VoiceChannel from "../components/VoiceChannel";
 import TagManager from "../components/TagManager";
+import DMNotifications from "../components/DMNotifications";
 
 export default function ChatPage() {
     const [user, setUser] = useState(null);
@@ -212,7 +213,8 @@ export default function ChatPage() {
     const getOtherParticipantName = (dmChannel) => {
         if (!dmChannel || dmChannel.type !== 'dm') return '';
         const otherParticipantId = getOtherParticipant(dmChannel);
-        return dmChannel.participantNames?.[otherParticipantId] || '不明なユーザー';
+        // participantNamesから名前を取得し、なければ'匿名'を返す
+        return dmChannel.participantNames?.[otherParticipantId] || '匿名';
     };
 
     // サーバー選択ハンドラ
@@ -626,12 +628,15 @@ export default function ChatPage() {
                             }}>
                                 ボイスチャンネルに接続されています
                             </p>
+
+                            {/* 参加者表示エリア */}
                             {voiceParticipants.length > 0 && (
                                 <div style={{
                                     display: 'flex',
-                                    gap: '16px',
                                     flexWrap: 'wrap',
-                                    justifyContent: 'center'
+                                    justifyContent: 'center',
+                                    gap: '16px',
+                                    maxWidth: '80%'
                                 }}>
                                     {voiceParticipants.map(participant => (
                                         <div key={participant.id} style={{
@@ -652,22 +657,78 @@ export default function ChatPage() {
                                                 fontSize: '32px',
                                                 fontWeight: '600',
                                                 border: speakingUsers.has(participant.id) ? '4px solid #43b581' : '4px solid transparent',
-                                                transition: 'all 0.2s ease'
+                                                transition: 'all 0.2s ease',
+                                                position: 'relative'
                                             }}>
                                                 {participant.name.charAt(0).toUpperCase()}
+
+                                                {/* 喋っているインジケーター */}
+                                                {speakingUsers.has(participant.id) && (
+                                                    <div style={{
+                                                        position: 'absolute',
+                                                        bottom: '-4px',
+                                                        right: '-4px',
+                                                        width: '16px',
+                                                        height: '16px',
+                                                        borderRadius: '50%',
+                                                        backgroundColor: '#43b581',
+                                                        border: '2px solid #36393f',
+                                                        animation: 'pulse 1.5s infinite'
+                                                    }} />
+                                                )}
+
+                                                {/* ミュートインジケーター */}
+                                                {participant.muted && (
+                                                    <div style={{
+                                                        position: 'absolute',
+                                                        top: '-4px',
+                                                        right: '-4px',
+                                                        width: '16px',
+                                                        height: '16px',
+                                                        borderRadius: '50%',
+                                                        backgroundColor: '#ed4245',
+                                                        border: '2px solid #36393f',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center',
+                                                        fontSize: '10px'
+                                                    }}>
+                                                        🔇
+                                                    </div>
+                                                )}
                                             </div>
                                             <span style={{
                                                 color: '#ffffff',
                                                 fontSize: '14px',
-                                                fontWeight: '600'
+                                                fontWeight: '600',
+                                                textAlign: 'center',
+                                                maxWidth: '100px',
+                                                overflow: 'hidden',
+                                                textOverflow: 'ellipsis',
+                                                whiteSpace: 'nowrap'
                                             }}>
-                                                {participant.name}
-                                            </span>
-                                            {participant.muted && (
-                                                <span style={{ fontSize: '12px' }}>🔇</span>
-                                            )}
+                        {participant.name}
+                    </span>
+                                            <span style={{
+                                                color: speakingUsers.has(participant.id) ? '#43b581' : '#b9bbbe',
+                                                fontSize: '12px'
+                                            }}>
+                        {speakingUsers.has(participant.id) ? '会話中' : '待機中'}
+                    </span>
                                         </div>
                                     ))}
+                                </div>
+                            )}
+
+                            {/* 参加者がいない場合のメッセージ */}
+                            {voiceParticipants.length === 0 && (
+                                <div style={{
+                                    color: '#b9bbbe',
+                                    fontSize: '16px',
+                                    textAlign: 'center',
+                                    marginTop: '20px'
+                                }}>
+                                    参加者がいません。他のメンバーを招待してください。
                                 </div>
                             )}
                         </div>
@@ -1348,6 +1409,8 @@ export default function ChatPage() {
                     />
                 )}
             </div>
+            {/* DM通知コンポーネントを追加 */}
+            {user && <DMNotifications user={user} />}
             {/* サーバー招待通知 */}
             <ServerInvites user={user} />
             {/* ボイスチャンネル */}

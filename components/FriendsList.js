@@ -1,4 +1,4 @@
-//components/FriendsList.js
+// lib/firestore.js
 import {
     collection,
     doc,
@@ -13,9 +13,9 @@ import {
     onSnapshot,
     serverTimestamp,
     arrayUnion,
-    arrayRemove
+    arrayRemove,
 } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db } from './firebase';
 
 // サーバー関連
 export const createServer = async (name, ownerId, ownerName) => {
@@ -28,7 +28,6 @@ export const createServer = async (name, ownerId, ownerName) => {
         icon: null
     };
     const serverRef = await addDoc(collection(db, 'servers'), serverData);
-
     // デフォルトロールを作成
     const roleIds = {};
     for (const roleData of DEFAULT_ROLES) {
@@ -39,13 +38,10 @@ export const createServer = async (name, ownerId, ownerName) => {
         });
         roleIds[roleData.name] = roleRef.id;
     }
-
     // オーナーをメンバーとして追加（オーナーロールを付与）
     await addMemberToServer(serverRef.id, ownerId, ownerName, [roleIds['オーナー']]);
-
     // デフォルトチャンネル作成
     await createChannel('一般', 'text', serverRef.id, ownerId);
-
     return serverRef.id;
 };
 
@@ -171,6 +167,22 @@ export const getUserFriends = (userId, callback, errorCallback) => {
     }
 };
 
+// ユーザーのフレンドリクエスト一覧を取得
+export const getFriendRequests = (userId, callback, errorCallback) => {
+    try {
+        const friendsRef = collection(db, 'friends');
+        const q = query(
+            friendsRef,
+            where('participants', 'array-contains', userId),
+            where('status', '==', 'pending')
+        );
+        return onSnapshot(q, callback, errorCallback);
+    } catch (error) {
+        console.error('フレンドリクエスト取得エラー:', error);
+        if (errorCallback) errorCallback(error);
+    }
+};
+
 // フレンドリクエストを送信
 export const sendFriendRequest = async (senderId, senderName, receiverEmail) => {
     try {
@@ -199,9 +211,10 @@ export const sendFriendRequest = async (senderId, senderName, receiverEmail) => 
         );
         const existingSnapshot = await getDocs(existingQuery);
 
-        const existingFriend = existingSnapshot.docs.find(doc =>
-            doc.data().participants.includes(receiverId)
-        );
+        const existingFriend = existingSnapshot.docs.find(doc => {
+            const data = doc.data();
+            return data.participants.includes(receiverId);
+        });
 
         if (existingFriend) {
             const status = existingFriend.data().status;
@@ -209,6 +222,29 @@ export const sendFriendRequest = async (senderId, senderName, receiverEmail) => 
                 throw new Error('既にフレンドです');
             } else if (status === 'pending') {
                 throw new Error('既にフレンドリクエストを送信済みです');
+            }
+        }
+
+        // 逆方向のリクエストもチェック
+        const reverseQuery = query(
+            friendsRef,
+            where('participants', 'array-contains', receiverId)
+        );
+        const reverseSnapshot = await getDocs(reverseQuery);
+
+        const reverseFriend = reverseSnapshot.docs.find(doc => {
+            const data = doc.data();
+            return data.participants.includes(senderId);
+        });
+
+        if (reverseFriend) {
+            const status = reverseFriend.data().status;
+            if (status === 'pending') {
+                // 相手から送られたリクエストを承認
+                await respondToFriendRequest(reverseFriend.id, true);
+                return { success: true, accepted: true };
+            } else if (status === 'accepted') {
+                throw new Error('既にフレンドです');
             }
         }
 
@@ -224,57 +260,51 @@ export const sendFriendRequest = async (senderId, senderName, receiverEmail) => 
         });
 
         console.log('フレンドリクエスト送信完了');
-        return true;
+        return { success: true, accepted: false };
     } catch (error) {
         console.error('フレンドリクエスト送信エラー:', error);
         throw error;
     }
 };
 
-// フレンドリクエストを承認
-export const acceptFriendRequest = async (requestId, currentUserId, currentUserName, senderId, senderName) => {
+// フレンドリクエストに応答する関数
+export const respondToFriendRequest = async (requestId, accept) => {
     try {
-        const friendRef = doc(db, 'friends', requestId);
-        await updateDoc(friendRef, {
-            status: 'accepted',
-            acceptedAt: serverTimestamp()
-        });
+        const requestRef = doc(db, 'friends', requestId);
+        const requestDoc = await getDoc(requestRef);
 
-        // DMチャンネルを作成
-        await createDMChannel(currentUserId, senderId, currentUserName, senderName);
+        if (!requestDoc.exists()) {
+            throw new Error('フレンドリクエストが見つかりません');
+        }
 
-        console.log('フレンドリクエスト承認完了');
+        const requestData = requestDoc.data();
+
+        if (accept) {
+            // リクエストを受け入れる
+            await updateDoc(requestRef, {
+                status: 'accepted',
+                updatedAt: serverTimestamp()
+            });
+
+            // DMチャンネルを作成
+            await createDMChannel(
+                requestData.senderId,
+                requestData.receiverId,
+                requestData.senderName,
+                requestData.receiverName
+            );
+
+            console.log('フレンドリクエスト承認完了');
+        } else {
+            // リクエストを拒否する
+            await deleteDoc(requestRef);
+            console.log('フレンドリクエスト拒否完了');
+        }
+
+        return { success: true };
     } catch (error) {
-        console.error('フレンドリクエスト承認エラー:', error);
+        console.error('フレンドリクエスト応答エラー:', error);
         throw error;
-    }
-};
-
-// フレンドリクエストを拒否
-export const declineFriendRequest = async (requestId) => {
-    try {
-        const friendRef = doc(db, 'friends', requestId);
-        await deleteDoc(friendRef);
-        console.log('フレンドリクエスト拒否完了');
-    } catch (error) {
-        console.error('フレンドリクエスト拒否エラー:', error);
-        throw error;
-    }
-};
-
-// ユーザーのフレンドリクエスト一覧を取得
-export const getFriendRequests = (userId, callback, errorCallback) => {
-    try {
-        const friendsRef = collection(db, 'friends');
-        const q = query(
-            friendsRef,
-            where('receiverId', '==', userId),
-            where('status', '==', 'pending')
-        );
-        return onSnapshot(q, callback, errorCallback);
-    } catch (error) {
-        console.error('フレンドリクエスト取得エラー:', error);
-        if (errorCallback) errorCallback(error);
     }
 };
 
@@ -295,6 +325,7 @@ export const blockFriend = async (userId, friendId) => {
             where('participants', 'array-contains', userId)
         );
         const querySnapshot = await getDocs(q);
+
         const friendDoc = querySnapshot.docs.find(doc =>
             doc.data().participants.includes(friendId)
         );
@@ -374,20 +405,20 @@ export const getUserDMs = (userId, callback, errorCallback) => {
 };
 
 // DMチャンネルを作成
-export const createDMChannel = async (userId, friendId, userName, friendName) => {
+export const createDMChannel = async (userId1, userId2, userName1, userName2) => {
     try {
         // 既存のDMチャンネルがあるかチェック
         const channelsRef = collection(db, 'channels');
         const q = query(
             channelsRef,
             where('type', '==', 'dm'),
-            where('participants', 'array-contains', userId)
+            where('participants', 'array-contains', userId1)
         );
         const querySnapshot = await getDocs(q);
 
         const existingDM = querySnapshot.docs.find(doc => {
             const data = doc.data();
-            return data.participants.includes(friendId) && data.participants.includes(userId);
+            return data.participants.includes(userId2);
         });
 
         if (existingDM) {
@@ -400,10 +431,10 @@ export const createDMChannel = async (userId, friendId, userName, friendName) =>
         // 新しいDMチャンネルを作成
         const dmRef = await addDoc(channelsRef, {
             type: 'dm',
-            participants: [userId, friendId],
+            participants: [userId1, userId2],
             participantNames: {
-                [userId]: userName,
-                [friendId]: friendName
+                [userId1]: userName1,
+                [userId2]: userName2
             },
             createdAt: serverTimestamp(),
             lastMessage: null,
@@ -414,10 +445,10 @@ export const createDMChannel = async (userId, friendId, userName, friendName) =>
         return {
             id: dmRef.id,
             type: 'dm',
-            participants: [userId, friendId],
+            participants: [userId1, userId2],
             participantNames: {
-                [userId]: userName,
-                [friendId]: friendName
+                [userId1]: userName1,
+                [userId2]: userName2
             }
         };
     } catch (error) {
@@ -474,6 +505,7 @@ export const hideDMChannel = async (channelId, userId) => {
         // DMチャンネルに非表示フラグを追加
         const channelRef = doc(db, 'channels', channelId);
         const channelDoc = await getDoc(channelRef);
+
         if (channelDoc.exists()) {
             const data = channelDoc.data();
             const hiddenFor = data.hiddenFor || [];
@@ -484,6 +516,7 @@ export const hideDMChannel = async (channelId, userId) => {
                 });
             }
         }
+
         console.log('DMチャンネルを非表示にしました');
     } catch (error) {
         console.error('DMチャンネル非表示エラー:', error);
@@ -496,6 +529,7 @@ export const showDMChannel = async (channelId, userId) => {
     try {
         const channelRef = doc(db, 'channels', channelId);
         const channelDoc = await getDoc(channelRef);
+
         if (channelDoc.exists()) {
             const data = channelDoc.data();
             const hiddenFor = data.hiddenFor || [];
@@ -504,6 +538,7 @@ export const showDMChannel = async (channelId, userId) => {
                 hiddenFor: newHiddenFor
             });
         }
+
         console.log('DMチャンネルを表示しました');
     } catch (error) {
         console.error('DMチャンネル表示エラー:', error);
@@ -769,6 +804,7 @@ export const searchUserByEmail = async (email) => {
 
 export const inviteUserToServer = async (serverId, userEmail, inviterName) => {
     const users = await searchUserByEmail(userEmail);
+
     if (users.length === 0) {
         // ユーザーが見つからない場合は、メール招待として処理
         const inviteData = {
@@ -793,6 +829,7 @@ export const inviteUserToServer = async (serverId, userEmail, inviterName) => {
         where('uid', '==', user.uid || user.id)
     );
     const memberSnapshot = await getDocs(memberQuery);
+
     if (!memberSnapshot.empty) {
         throw new Error('このユーザーは既にサーバーのメンバーです');
     }
@@ -807,6 +844,7 @@ export const inviteUserToServer = async (serverId, userEmail, inviterName) => {
         type: 'user_invite',
         createdAt: serverTimestamp()
     };
+
     return await addDoc(collection(db, 'serverInvites'), inviteData);
 };
 
@@ -955,6 +993,7 @@ export const deleteServer = async (serverId, userId) => {
     if (!serverDoc.exists()) {
         throw new Error('サーバーが見つかりません');
     }
+
     const serverData = serverDoc.data();
     if (serverData.ownerId !== userId) {
         throw new Error('サーバーを削除する権限がありません');
@@ -967,6 +1006,7 @@ export const deleteServer = async (serverId, userId) => {
         where('serverId', '==', serverId)
     );
     const channelsSnapshot = await getDocs(channelsQuery);
+
     for (const channelDoc of channelsSnapshot.docs) {
         await deleteDoc(channelDoc.ref);
         // チャンネルのメッセージも削除
@@ -975,6 +1015,7 @@ export const deleteServer = async (serverId, userId) => {
             where('channelId', '==', channelDoc.id)
         );
         const messagesSnapshot = await getDocs(messagesQuery);
+
         for (const messageDoc of messagesSnapshot.docs) {
             await deleteDoc(messageDoc.ref);
         }
@@ -986,6 +1027,7 @@ export const deleteServer = async (serverId, userId) => {
         where('serverId', '==', serverId)
     );
     const membersSnapshot = await getDocs(membersQuery);
+
     for (const memberDoc of membersSnapshot.docs) {
         await deleteDoc(memberDoc.ref);
     }
@@ -996,6 +1038,7 @@ export const deleteServer = async (serverId, userId) => {
         where('serverId', '==', serverId)
     );
     const rolesSnapshot = await getDocs(rolesQuery);
+
     for (const roleDoc of rolesSnapshot.docs) {
         await deleteDoc(roleDoc.ref);
     }
@@ -1006,6 +1049,7 @@ export const deleteServer = async (serverId, userId) => {
         where('serverId', '==', serverId)
     );
     const invitesSnapshot = await getDocs(invitesQuery);
+
     for (const inviteDoc of invitesSnapshot.docs) {
         await deleteDoc(inviteDoc.ref);
     }
@@ -1028,6 +1072,125 @@ export const sendMessageWithImage = async (channelId, userId, userName, content,
         attachments: imageId ? [{ type: 'image', id: imageId }] : []
     };
     return await addDoc(collection(db, 'messages'), messageData);
+};
+
+// タグ関連
+export const updateUserTags = async (userId, tags) => {
+    const userQuery = query(
+        collection(db, 'users'),
+        where('uid', '==', userId)
+    );
+    const snapshot = await getDocs(userQuery);
+    if (!snapshot.empty) {
+        const userDoc = snapshot.docs[0];
+        await updateDoc(userDoc.ref, {
+            tags,
+            updatedAt: serverTimestamp()
+        });
+    }
+};
+
+export const getAllTags = async () => {
+    try {
+        const usersRef = collection(db, 'users');
+        const snapshot = await getDocs(usersRef);
+        const allTags = new Set();
+
+        snapshot.docs.forEach(doc => {
+            const userData = doc.data();
+            if (userData.tags && Array.isArray(userData.tags)) {
+                userData.tags.forEach(tag => allTags.add(tag));
+            }
+        });
+
+        return Array.from(allTags);
+    } catch (error) {
+        console.error('タグ取得エラー:', error);
+        return [];
+    }
+};
+
+export const searchUsersByTag = async (tag) => {
+    try {
+        const usersRef = collection(db, 'users');
+        const q = query(usersRef, where('tags', 'array-contains', tag));
+        const snapshot = await getDocs(q);
+
+        return snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        }));
+    } catch (error) {
+        console.error('タグ検索エラー:', error);
+        return [];
+    }
+};
+
+export const inviteUsersByTag = async (serverId, tag, inviterName) => {
+    try {
+        const users = await searchUsersByTag(tag);
+        if (users.length === 0) {
+            throw new Error(`タグ "${tag}" のユーザーが見つかりません`);
+        }
+
+        const invites = [];
+        for (const user of users) {
+            try {
+                // 既にサーバーのメンバーかチェック
+                const memberQuery = query(
+                    collection(db, 'serverMembers'),
+                    where('serverId', '==', serverId),
+                    where('uid', '==', user.id)
+                );
+                const memberSnapshot = await getDocs(memberQuery);
+
+                if (memberSnapshot.empty) {
+                    const inviteData = {
+                        serverId,
+                        userId: user.id,
+                        userEmail: user.email,
+                        userName: user.displayName || '匿名',
+                        inviterName,
+                        status: 'pending',
+                        type: 'tag_invite',
+                        createdAt: serverTimestamp()
+                    };
+                    const inviteRef = await addDoc(collection(db, 'serverInvites'), inviteData);
+                    invites.push(inviteRef.id);
+                }
+            } catch (error) {
+                console.error(`ユーザー ${user.id} への招待エラー:`, error);
+            }
+        }
+
+        return invites;
+    } catch (error) {
+        console.error('タグ別招待エラー:', error);
+        throw error;
+    }
+};
+
+// ユーザー情報取得
+export const getUserById = async (userId) => {
+    try {
+        const userQuery = query(
+            collection(db, 'users'),
+            where('uid', '==', userId)
+        );
+        const snapshot = await getDocs(userQuery);
+
+        if (!snapshot.empty) {
+            return {
+                id: snapshot.docs[0].id,
+                ...snapshot.docs[0].data()
+            };
+        }
+
+        return null;
+    } catch (error) {
+        console.error('ユーザー情報取得エラー:', error);
+        throw error;
+    }
 };
 
 export const getServerRoles = (serverId, callback) => {
