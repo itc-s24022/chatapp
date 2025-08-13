@@ -1,110 +1,141 @@
-//components/FriendsList.jsx
+// components/FriendsList.jsx
 import { useState, useEffect } from 'react';
 import {
-    sendFriendRequest,
-    getFriendRequests,
-    acceptFriendRequest,
-    declineFriendRequest,
     getUserFriends,
-    searchUserByEmail,
-    createDMChannel
+    sendFriendRequest,
+    respondToFriendRequest,
+    getUserDMs,
+    createDMChannel,
+    getFriendRequests
 } from '../lib/firestore';
 
-export default function FriendsList({ user }) {
+export default function FriendsList({ user, onDMChannelSelect, currentChannel }) {
     const [friends, setFriends] = useState([]);
-    const [friendRequests, setFriendRequests] = useState([]);
-    const [searchQuery, setSearchQuery] = useState('');
-    const [activeTab, setActiveTab] = useState('friends');
-    const [searchResults, setSearchResults] = useState([]);
+    const [pendingRequests, setPendingRequests] = useState([]);
+    const [dmChannels, setDmChannels] = useState([]);
+    const [showAddFriend, setShowAddFriend] = useState(false);
+    const [friendEmail, setFriendEmail] = useState('');
     const [loading, setLoading] = useState(false);
+    const [processing, setProcessing] = useState({});
+    const [refreshKey, setRefreshKey] = useState(0); // リフレッシュ用のキー
 
     useEffect(() => {
         if (!user) return;
 
+        // フレンド取得
         const unsubscribeFriends = getUserFriends(user.uid, (snapshot) => {
-            const friendList = snapshot.docs.map(doc => {
-                const data = doc.data();
-                return {
-                    id: doc.id,
-                    ...data,
-                    friendId: data.user1 === user.uid ? data.user2 : data.user1
-                };
-            });
-            setFriends(friendList);
+            const friendsData = snapshot.docs
+                .map(doc => ({ id: doc.id, ...doc.data() }))
+                .filter(req => req.status === 'accepted');
+
+            setFriends(friendsData);
         });
 
+        // 保留中のリクエスト取得
         const unsubscribeRequests = getFriendRequests(user.uid, (snapshot) => {
-            const requestList = snapshot.docs.map(doc => ({
+            const requestsData = snapshot.docs
+                .map(doc => ({ id: doc.id, ...doc.data() }))
+                .filter(req => req.status === 'pending' && req.receiverId === user.uid);
+
+            setPendingRequests(requestsData);
+        });
+
+        // DMチャンネル取得
+        const unsubscribeDMs = getUserDMs(user.uid, (snapshot) => {
+            const dmList = snapshot.docs.map(doc => ({
                 id: doc.id,
                 ...doc.data()
             }));
-            setFriendRequests(requestList);
+            setDmChannels(dmList);
         });
 
         return () => {
             unsubscribeFriends();
             unsubscribeRequests();
+            unsubscribeDMs();
         };
-    }, [user]);
+    }, [user, refreshKey]); // refreshKeyを依存配列に追加
 
-    const handleSearch = async () => {
-        if (!searchQuery.trim()) return;
+    const handleSendFriendRequest = async () => {
+        if (!friendEmail.trim() || loading) return;
 
         setLoading(true);
         try {
-            const results = await searchUserByEmail(searchQuery.trim());
-            setSearchResults(results.filter(result => result.uid !== user.uid));
+            await sendFriendRequest(user.uid, user.displayName || '匿名', friendEmail.trim());
+            alert('フレンドリクエストを送信しました');
+            setFriendEmail('');
+            setShowAddFriend(false);
+            setRefreshKey(prev => prev + 1); // リフレッシュキーを更新
         } catch (error) {
-            console.error('検索エラー:', error);
-            alert('ユーザー検索に失敗しました');
+            console.error('フレンドリクエスト送信エラー:', error);
+            alert('リクエストの送信に失敗しました: ' + error.message);
         } finally {
             setLoading(false);
         }
     };
 
-    const handleSendFriendRequest = async (targetUser) => {
+    const handleStartDM = async (friendId, friendName) => {
         try {
-            await sendFriendRequest(
-                user.uid,
-                user.displayName || '匿名',
-                targetUser.uid || targetUser.id,
-                targetUser.displayName || '匿名'
+            // 既存のDMチャンネルを検索
+            const existingDM = dmChannels.find(dm =>
+                dm.type === 'dm' &&
+                dm.participants.includes(user.uid) &&
+                dm.participants.includes(friendId)
             );
-            alert('フレンド申請を送信しました');
-            setSearchResults([]);
-            setSearchQuery('');
+
+            if (existingDM) {
+                // 既存のDMチャンネルを選択
+                onDMChannelSelect(existingDM);
+            } else {
+                // 新しいDMチャンネルを作成
+                const newDM = await createDMChannel(
+                    user.uid,
+                    friendId,
+                    user.displayName || '匿名',
+                    friendName || '匿名'
+                );
+                onDMChannelSelect(newDM);
+            }
         } catch (error) {
-            console.error('フレンド申請エラー:', error);
-            alert('フレンド申請に失敗しました');
+            console.error('DM開始エラー:', error);
+            alert('DMの開始に失敗しました: ' + error.message);
         }
     };
 
-    const handleAcceptRequest = async (requestId, fromUserId) => {
+    const handleCancelRequest = async (requestId) => {
+        if (processing[requestId]) return;
+
+        setProcessing(prev => ({ ...prev, [requestId]: true }));
+
         try {
-            await acceptFriendRequest(requestId, fromUserId, user.uid);
+            await respondToFriendRequest(requestId, false);
+            setPendingRequests(prev => prev.filter(req => req.id !== requestId));
+            setRefreshKey(prev => prev + 1); // リフレッシュキーを更新
         } catch (error) {
-            console.error('フレンド申請受諾エラー:', error);
-            alert('フレンド申請の受諾に失敗しました');
+            console.error('リクエストキャンセルエラー:', error);
+            alert('キャンセルに失敗しました');
+        } finally {
+            setProcessing(prev => ({ ...prev, [requestId]: false }));
         }
     };
 
-    const handleDeclineRequest = async (requestId) => {
-        try {
-            await declineFriendRequest(requestId);
-        } catch (error) {
-            console.error('フレンド申請拒否エラー:', error);
-            alert('フレンド申請の拒否に失敗しました');
-        }
-    };
+    const handleAcceptRequest = async (requestId) => {
+        if (processing[requestId]) return;
 
-    const handleStartDM = async (friendId) => {
+        setProcessing(prev => ({ ...prev, [requestId]: true }));
+
         try {
-            await createDMChannel(user.uid, friendId);
-            // DMチャンネルが作成されたことを通知
-            alert('DMチャンネルを作成しました');
+            const request = pendingRequests.find(req => req.id === requestId);
+            if (request) {
+                await respondToFriendRequest(requestId, true);
+                setPendingRequests(prev => prev.filter(req => req.id !== requestId));
+                setRefreshKey(prev => prev + 1); // リフレッシュキーを更新
+            }
         } catch (error) {
-            console.error('DM作成エラー:', error);
-            alert('DM作成に失敗しました');
+            console.error('リクエスト承認エラー:', error);
+            alert('承認に失敗しました');
+        } finally {
+            setProcessing(prev => ({ ...prev, [requestId]: false }));
         }
     };
 
@@ -114,297 +145,242 @@ export default function FriendsList({ user }) {
             backgroundColor: '#2f3136',
             display: 'flex',
             flexDirection: 'column',
-            height: '100vh'
+            height: '100%'
         }}>
             <div style={{
-                padding: '12px 16px',
-                borderBottom: '1px solid #202225'
+                padding: '16px',
+                borderBottom: '1px solid #40444b'
             }}>
                 <h2 style={{
-                    color: '#ffffff',
+                    margin: 0,
                     fontSize: '16px',
                     fontWeight: '600',
-                    margin: '0 0 16px 0'
+                    color: '#ffffff'
+                }}>
+                    ダイレクトメッセージ
+                </h2>
+            </div>
+
+            <div style={{
+                padding: '8px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+            }}>
+                <h3 style={{
+                    margin: 0,
+                    fontSize: '12px',
+                    fontWeight: '600',
+                    color: '#8e9297',
+                    textTransform: 'uppercase'
                 }}>
                     フレンド
-                </h2>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <button
-                        onClick={() => setActiveTab('friends')}
-                        style={{
-                            backgroundColor: activeTab === 'friends' ? '#5865f2' : 'transparent',
-                            color: activeTab === 'friends' ? '#ffffff' : '#b9bbbe',
-                            border: 'none',
-                            padding: '8px 12px',
-                            borderRadius: '4px',
-                            cursor: 'pointer',
-                            textAlign: 'left',
-                            fontSize: '14px'
-                        }}
-                    >
-                        すべて ({friends.length})
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('requests')}
-                        style={{
-                            backgroundColor: activeTab === 'requests' ? '#5865f2' : 'transparent',
-                            color: activeTab === 'requests' ? '#ffffff' : '#b9bbbe',
-                            border: 'none',
-                            padding: '8px 12px',
-                            borderRadius: '4px',
-                            cursor: 'pointer',
-                            textAlign: 'left',
-                            fontSize: '14px',
-                            position: 'relative'
-                        }}
-                    >
-                        申請中
-                        {friendRequests.length > 0 && (
-                            <span style={{
-                                backgroundColor: '#ed4245',
-                                color: 'white',
-                                borderRadius: '10px',
-                                padding: '2px 6px',
-                                fontSize: '12px',
-                                marginLeft: '8px'
-                            }}>
-                                {friendRequests.length}
-                            </span>
-                        )}
-                    </button>
-                </div>
+                </h3>
+                <button
+                    onClick={() => setShowAddFriend(!showAddFriend)}
+                    style={{
+                        backgroundColor: showAddFriend ? '#5865f2' : 'transparent',
+                        color: showAddFriend ? 'white' : '#8e9297',
+                        border: 'none',
+                        borderRadius: '4px',
+                        width: '24px',
+                        height: '24px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '16px'
+                    }}
+                >
+                    {showAddFriend ? '✕' : '+'}
+                </button>
             </div>
 
-            <div style={{ padding: '0 16px' }}>
-                <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
-                    <input
-                        type="text"
-                        placeholder="メールアドレスで検索"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        style={{
-                            backgroundColor: '#202225',
-                            color: '#b9bbbe',
-                            border: 'none',
-                            borderRadius: '4px',
-                            padding: '8px 12px',
-                            fontSize: '14px',
-                            flex: 1
-                        }}
-                    />
-                    <button
-                        onClick={handleSearch}
-                        disabled={loading}
-                        style={{
-                            backgroundColor: '#5865f2',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '4px',
-                            padding: '8px 12px',
-                            cursor: 'pointer',
-                            fontSize: '14px',
-                            whiteSpace: 'nowrap'
-                        }}
-                    >
-                        {loading ? '検索中...' : '検索'}
-                    </button>
-                </div>
-
-                {searchResults.length > 0 && (
-                    <div style={{ marginBottom: '16px' }}>
-                        {searchResults.map(result => (
-                            <div key={result.uid} style={{
+            {/* フレンド追加フォーム */}
+            {showAddFriend && (
+                <div style={{
+                    padding: '0 8px 8px'
+                }}>
+                    <div style={{
+                        display: 'flex',
+                        gap: '4px'
+                    }}>
+                        <input
+                            type="email"
+                            value={friendEmail}
+                            onChange={(e) => setFriendEmail(e.target.value)}
+                            placeholder="メールアドレス"
+                            style={{
+                                flex: 1,
+                                padding: '6px 8px',
                                 backgroundColor: '#40444b',
+                                border: 'none',
                                 borderRadius: '4px',
-                                padding: '12px',
-                                marginBottom: '8px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between'
-                            }}>
-                                <div>
-                                    <div style={{ color: '#ffffff', fontSize: '14px', fontWeight: '500' }}>
-                                        {result.displayName || "匿名"}
-                                    </div>
-                                    <div style={{ color: '#b9bbbe', fontSize: '12px' }}>
-                                        {result.email}
-                                    </div>
-                                </div>
-                                <button
-                                    onClick={() => handleSendFriendRequest(result)}
-                                    style={{
-                                        backgroundColor: '#3ba55c',
-                                        color: 'white',
-                                        border: 'none',
-                                        borderRadius: '4px',
-                                        padding: '6px 12px',
-                                        cursor: 'pointer',
-                                        fontSize: '12px'
-                                    }}
-                                >
-                                    フレンド申請
-                                </button>
-                            </div>
-                        ))}
+                                color: '#dcddde',
+                                fontSize: '12px'
+                            }}
+                        />
+                        <button
+                            onClick={handleSendFriendRequest}
+                            disabled={!friendEmail.trim() || loading}
+                            style={{
+                                backgroundColor: friendEmail.trim() && !loading ? '#5865f2' : '#4f545c',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '4px',
+                                padding: '6px 12px',
+                                cursor: friendEmail.trim() && !loading ? 'pointer' : 'not-allowed',
+                                fontSize: '12px'
+                            }}
+                        >
+                            {loading ? '送信中...' : '追加'}
+                        </button>
                     </div>
-                )}
-            </div>
+                </div>
+            )}
 
-            <div style={{ flex: 1, overflowY: 'auto', padding: '16px' }}>
-                {activeTab === 'friends' ? (
-                    <div>
-                        {friends.length === 0 ? (
-                            <p style={{ color: '#b9bbbe', fontSize: '14px', textAlign: 'center' }}>
-                                フレンドがいません
-                            </p>
-                        ) : (
-                            friends.map(friend => (
-                                <div key={friend.id} style={{
+            {/* フレンドリスト */}
+            <div style={{
+                flex: 1,
+                overflowY: 'auto',
+                padding: '8px'
+            }}>
+                {friends.length > 0 ? (
+                    friends.map(friend => {
+                        const otherUserId = friend.senderId === user.uid ? friend.receiverId : friend.senderId;
+                        const otherUserName = friend.senderId === user.uid ? friend.receiverName : friend.senderName;
+
+                        return (
+                            <div
+                                key={friend.id}
+                                onClick={() => handleStartDM(otherUserId, otherUserName)}
+                                style={{
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: '12px',
                                     padding: '8px',
                                     borderRadius: '4px',
                                     cursor: 'pointer',
-                                    marginBottom: '4px',
-                                    justifyContent: 'space-between'
+                                    marginBottom: '2px',
+                                    backgroundColor: currentChannel?.participants?.includes(otherUserId) ? '#40444b' : 'transparent'
                                 }}
-                                     onMouseOver={(e) => e.target.style.backgroundColor = '#40444b'}
-                                     onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                        <div style={{
-                                            width: '32px',
-                                            height: '32px',
-                                            borderRadius: '50%',
-                                            backgroundColor: '#5865f2',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            fontSize: '14px',
-                                            fontWeight: '600',
-                                            color: 'white'
-                                        }}>
-                                            {(friend.displayName || "匿").charAt(0).toUpperCase()}
-                                        </div>
-                                        <div>
-                                            <div style={{
-                                                color: '#ffffff',
-                                                fontSize: '14px',
-                                                fontWeight: '500'
-                                            }}>
-                                                {friend.displayName || "匿名"}
-                                            </div>
-                                            <div style={{
-                                                color: '#43b581',
-                                                fontSize: '12px'
-                                            }}>
-                                                オンライン
-                                            </div>
-                                        </div>
-                                    </div>
+                                onMouseOver={(e) => e.currentTarget.style.backgroundColor = currentChannel?.participants?.includes(otherUserId) ? '#40444b' : '#35373c'}
+                                onMouseOut={(e) => e.currentTarget.style.backgroundColor = currentChannel?.participants?.includes(otherUserId) ? '#40444b' : 'transparent'}
+                            >
+                                <div style={{
+                                    width: '32px',
+                                    height: '32px',
+                                    borderRadius: '50%',
+                                    backgroundColor: '#5865f2',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    color: 'white',
+                                    fontSize: '14px',
+                                    fontWeight: '600',
+                                    marginRight: '8px'
+                                }}>
+                                    {(otherUserName || '匿').charAt(0).toUpperCase()}
+                                </div>
+                                <div style={{
+                                    color: '#dcddde',
+                                    fontSize: '14px',
+                                    fontWeight: '500'
+                                }}>
+                                    {otherUserName || '匿名'}
+                                </div>
+                            </div>
+                        );
+                    })
+                ) : (
+                    <div style={{
+                        padding: '8px',
+                        color: '#8e9297',
+                        fontSize: '12px',
+                        textAlign: 'center'
+                    }}>
+                        フレンドがいません
+                    </div>
+                )}
+
+                {/* 保留中のリクエスト */}
+                {pendingRequests.length > 0 && (
+                    <>
+                        <h3 style={{
+                            margin: '16px 0 8px 0',
+                            fontSize: '12px',
+                            fontWeight: '600',
+                            color: '#8e9297',
+                            textTransform: 'uppercase'
+                        }}>
+                            保留中のリクエスト
+                        </h3>
+                        {pendingRequests.map(request => (
+                            <div key={request.id} style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                padding: '8px',
+                                borderRadius: '4px',
+                                marginBottom: '2px',
+                                backgroundColor: '#40444b'
+                            }}>
+                                <div style={{
+                                    width: '32px',
+                                    height: '32px',
+                                    borderRadius: '50%',
+                                    backgroundColor: '#5865f2',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    color: 'white',
+                                    fontSize: '14px',
+                                    fontWeight: '600',
+                                    marginRight: '8px'
+                                }}>
+                                    {(request.senderName || '匿').charAt(0).toUpperCase()}
+                                </div>
+                                <div style={{
+                                    flex: 1,
+                                    color: '#dcddde',
+                                    fontSize: '14px',
+                                    fontWeight: '500'
+                                }}>
+                                    {request.senderName || '匿名'}
+                                </div>
+                                <div style={{ display: 'flex', gap: '4px' }}>
                                     <button
-                                        onClick={() => handleStartDM(friend.friendId)}
+                                        onClick={() => handleAcceptRequest(request.id)}
+                                        disabled={processing[request.id]}
                                         style={{
-                                            backgroundColor: '#5865f2',
+                                            backgroundColor: '#3ba55c',
                                             color: 'white',
                                             border: 'none',
                                             borderRadius: '4px',
-                                            padding: '6px 12px',
-                                            cursor: 'pointer',
-                                            fontSize: '12px',
-                                            whiteSpace: 'nowrap'
+                                            padding: '4px 8px',
+                                            cursor: processing[request.id] ? 'not-allowed' : 'pointer',
+                                            fontSize: '12px'
                                         }}
                                     >
-                                        DM
+                                        {processing[request.id] ? '処理中...' : '承認'}
+                                    </button>
+                                    <button
+                                        onClick={() => handleCancelRequest(request.id)}
+                                        disabled={processing[request.id]}
+                                        style={{
+                                            backgroundColor: '#ed4245',
+                                            color: 'white',
+                                            border: 'none',
+                                            borderRadius: '4px',
+                                            padding: '4px 8px',
+                                            cursor: processing[request.id] ? 'not-allowed' : 'pointer',
+                                            fontSize: '12px'
+                                        }}
+                                    >
+                                        {processing[request.id] ? '処理中...' : '拒否'}
                                     </button>
                                 </div>
-                            ))
-                        )}
-                    </div>
-                ) : (
-                    <div>
-                        {friendRequests.length === 0 ? (
-                            <p style={{ color: '#b9bbbe', fontSize: '14px', textAlign: 'center' }}>
-                                申請はありません
-                            </p>
-                        ) : (
-                            friendRequests.map(request => (
-                                <div key={request.id} style={{
-                                    backgroundColor: '#40444b',
-                                    borderRadius: '4px',
-                                    padding: '12px',
-                                    marginBottom: '8px'
-                                }}>
-                                    <div style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '12px',
-                                        marginBottom: '8px'
-                                    }}>
-                                        <div style={{
-                                            width: '32px',
-                                            height: '32px',
-                                            borderRadius: '50%',
-                                            backgroundColor: '#5865f2',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            fontSize: '14px',
-                                            fontWeight: '600',
-                                            color: 'white'
-                                        }}>
-                                            {(request.fromUserName || "匿").charAt(0).toUpperCase()}
-                                        </div>
-                                        <div>
-                                            <div style={{
-                                                color: '#ffffff',
-                                                fontSize: '14px',
-                                                fontWeight: '500'
-                                            }}>
-                                                {request.fromUserName || "匿名"}
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div style={{
-                                        display: 'flex',
-                                        gap: '8px'
-                                    }}>
-                                        <button
-                                            onClick={() => handleAcceptRequest(request.id, request.fromUserId)}
-                                            style={{
-                                                backgroundColor: '#3ba55c',
-                                                color: 'white',
-                                                border: 'none',
-                                                borderRadius: '4px',
-                                                padding: '6px 12px',
-                                                cursor: 'pointer',
-                                                fontSize: '12px',
-                                                flex: 1
-                                            }}
-                                        >
-                                            承認
-                                        </button>
-                                        <button
-                                            onClick={() => handleDeclineRequest(request.id)}
-                                            style={{
-                                                backgroundColor: '#ed4245',
-                                                color: 'white',
-                                                border: 'none',
-                                                borderRadius: '4px',
-                                                padding: '6px 12px',
-                                                cursor: 'pointer',
-                                                fontSize: '12px',
-                                                flex: 1
-                                            }}
-                                        >
-                                            拒否
-                                        </button>
-                                    </div>
-                                </div>
-                            ))
-                        )}
-                    </div>
+                            </div>
+                        ))}
+                    </>
                 )}
             </div>
         </div>

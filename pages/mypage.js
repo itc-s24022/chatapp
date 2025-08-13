@@ -4,11 +4,15 @@ import { onAuthStateChanged, updateProfile } from "firebase/auth";
 import { auth } from "../lib/firebase";
 import { useRouter } from "next/router";
 import TagManager from "../components/TagManager";
+import { sendFriendRequest } from "../lib/firestore";
 
 export default function MyPage() {
     const [user, setUser] = useState(null);
     const [editing, setEditing] = useState(false);
     const [newName, setNewName] = useState("");
+    const [showAddFriend, setShowAddFriend] = useState(false);
+    const [friendEmail, setFriendEmail] = useState("");
+    const [loading, setLoading] = useState(false);
     const router = useRouter();
 
     useEffect(() => {
@@ -40,6 +44,23 @@ export default function MyPage() {
         } catch (error) {
             console.error("更新エラー:", error);
             alert("ユーザー名の更新に失敗しました");
+        }
+    };
+
+    const handleSendFriendRequest = async () => {
+        if (!friendEmail.trim() || loading) return;
+
+        setLoading(true);
+        try {
+            await sendFriendRequest(user.uid, user.displayName || '匿名', friendEmail.trim());
+            alert('フレンドリクエストを送信しました');
+            setFriendEmail('');
+            setShowAddFriend(false);
+        } catch (error) {
+            console.error('フレンドリクエスト送信エラー:', error);
+            alert('リクエストの送信に失敗しました: ' + error.message);
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -254,6 +275,109 @@ export default function MyPage() {
                                 >
                                     編集
                                 </button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* フレンドリクエストセクション */}
+                <div style={{
+                    backgroundColor: '#2f3136',
+                    borderRadius: '8px',
+                    padding: '24px',
+                    marginBottom: '24px',
+                    boxShadow: '0 2px 10px rgba(0,0,0,0.2)'
+                }}>
+                    <h3 style={{
+                        margin: '0 0 16px 0',
+                        fontSize: '18px',
+                        fontWeight: '600',
+                        color: '#ffffff'
+                    }}>
+                        👥 フレンドリクエスト
+                    </h3>
+
+                    <div style={{ marginBottom: '16px' }}>
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            marginBottom: '12px'
+                        }}>
+                            <h4 style={{
+                                margin: 0,
+                                fontSize: '14px',
+                                fontWeight: '500',
+                                color: '#dcddde'
+                            }}>
+                                新しいフレンドを追加
+                            </h4>
+                            <button
+                                onClick={() => setShowAddFriend(!showAddFriend)}
+                                style={{
+                                    backgroundColor: showAddFriend ? '#5865f2' : 'transparent',
+                                    color: showAddFriend ? 'white' : '#b9bbbe',
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    padding: '4px 8px',
+                                    cursor: 'pointer',
+                                    fontSize: '14px'
+                                }}
+                            >
+                                {showAddFriend ? 'キャンセル' : '追加'}
+                            </button>
+                        </div>
+
+                        {showAddFriend && (
+                            <div style={{
+                                backgroundColor: '#40444b',
+                                borderRadius: '8px',
+                                padding: '16px'
+                            }}>
+                                <div style={{
+                                    color: '#b9bbbe',
+                                    fontSize: '12px',
+                                    marginBottom: '8px'
+                                }}>
+                                    フレンドのメールアドレスを入力してリクエストを送信
+                                </div>
+                                <div style={{
+                                    display: 'flex',
+                                    gap: '8px'
+                                }}>
+                                    <input
+                                        type="email"
+                                        value={friendEmail}
+                                        onChange={(e) => setFriendEmail(e.target.value)}
+                                        placeholder="メールアドレス"
+                                        style={{
+                                            flex: 1,
+                                            padding: '10px',
+                                            backgroundColor: '#36393f',
+                                            border: '1px solid #72767d',
+                                            borderRadius: '4px',
+                                            color: '#dcddde',
+                                            fontSize: '14px',
+                                            outline: 'none'
+                                        }}
+                                    />
+                                    <button
+                                        onClick={handleSendFriendRequest}
+                                        disabled={!friendEmail.trim() || loading}
+                                        style={{
+                                            backgroundColor: friendEmail.trim() && !loading ? '#5865f2' : '#4f545c',
+                                            color: 'white',
+                                            border: 'none',
+                                            borderRadius: '4px',
+                                            padding: '0 16px',
+                                            cursor: friendEmail.trim() && !loading ? 'pointer' : 'not-allowed',
+                                            fontSize: '14px',
+                                            fontWeight: '500'
+                                        }}
+                                    >
+                                        {loading ? '送信中...' : '送信'}
+                                    </button>
+                                </div>
                             </div>
                         )}
                     </div>
