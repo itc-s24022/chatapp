@@ -18,9 +18,11 @@ export default function ServerSidebar({
     const [showImageUploader, setShowImageUploader] = useState(null);
 
     const handleCreateServer = async () => {
-        if (!serverName.trim()) return;
+        // 安全に文字列を取得
+        const name = serverName ? serverName.trim() : '';
+        if (!name) return;
 
-        await onCreateServer(serverName.trim());
+        await onCreateServer(name);
         setServerName('');
         setShowCreateModal(false);
     };
