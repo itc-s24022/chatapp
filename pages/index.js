@@ -70,8 +70,26 @@ export default function ChatPage() {
     const [speakingUsers, setSpeakingUsers] = useState(new Set());
     const [isMuted, setIsMuted] = useState(false);
     const [isDMMode, setIsDMMode] = useState(false);
+
     const messagesEndRef = useRef(null);
     const router = useRouter();
+
+    // ログアウト処理関数
+    const handleSignOut = async () => {
+        try {
+            await signOut(auth);
+            router.push("/login");
+        } catch (error) {
+            console.error('ログアウトエラー:', error);
+            alert('ログアウトに失敗しました');
+        }
+    };
+
+    // 画像アップロードハンドラ
+    const handleImageUpload = (uploadedImage) => {
+        setImageAttachment(uploadedImage);
+        setShowImageUploader(false);
+    };
 
     // 認証状態チェック
     useEffect(() => {
@@ -308,63 +326,51 @@ export default function ChatPage() {
             setImageAttachment(null);
         } catch (error) {
             console.error('メッセージ送信エラー:', error);
-            alert('メッセージの送信に失敗しました');
+            alert('メッセージの送信に失敗しました: ' + error.message);
         }
-    };
-
-    const handleImageUpload = (uploadedImage) => {
-        setImageAttachment(uploadedImage);
-        setShowImageUploader(false);
     };
 
     const handleServerCreate = async (serverName) => {
         if (!user) return;
         try {
-            await createServer(serverName, user.uid, user.displayName || "匿名");
+            if (!serverName || !serverName.trim()) {
+                alert('サーバー名を入力してください');
+                return;
+            }
+            await createServer(serverName.trim(), user.uid, user.displayName || "匿名");
         } catch (error) {
             console.error('サーバー作成エラー:', error);
-            alert('サーバーの作成に失敗しました');
+            alert('サーバーの作成に失敗しました: ' + error.message);
         }
     };
 
     const handleChannelCreate = async (channelData) => {
         if (!user || !currentServer || currentServer.id === 'dm') return;
         try {
-            await createChannel(channelData.name, channelData.type, currentServer.id, user.uid);
+            if (!channelData.name || !channelData.name.trim()) {
+                alert('チャンネル名を入力してください');
+                return;
+            }
+            await createChannel(
+                channelData.name.trim(),
+                channelData.type,
+                currentServer.id,
+                user.uid
+            );
         } catch (error) {
             console.error('チャンネル作成エラー:', error);
-            alert('チャンネルの作成に失敗しました');
-        }
-    };
-
-    const handleSignOut = async () => {
-        try {
-            await signOut(auth);
-            router.push("/login");
-        } catch (error) {
-            console.error('ログアウトエラー:', error);
-        }
-    };
-
-    const handleReaction = async (messageId, emoji) => {
-        if (!user) return;
-        try {
-            const message = messages.find(m => m.id === messageId);
-            const userReacted = message.reactions?.[emoji]?.includes(user.uid);
-            if (userReacted) {
-                await removeReaction(messageId, user.uid, emoji);
-            } else {
-                await addReaction(messageId, user.uid, emoji);
-            }
-        } catch (error) {
-            console.error('リアクションエラー:', error);
+            alert('チャンネルの作成に失敗しました: ' + error.message);
         }
     };
 
     const handleInviteUser = async () => {
         if (!inviteEmail.trim() || !currentServer || currentServer.id === 'dm') return;
         try {
-            await inviteUserToServer(currentServer.id, inviteEmail.trim(), user.displayName || '匿名');
+            await inviteUserToServer(
+                currentServer.id,
+                inviteEmail.trim(),
+                user.displayName || '匿名'
+            );
             setInviteEmail("");
             setShowInviteModal(false);
             alert('招待を送信しました');
@@ -393,6 +399,21 @@ export default function ChatPage() {
         } catch (error) {
             console.error('アイコン更新エラー:', error);
             alert('アイコン更新に失敗しました');
+        }
+    };
+
+    const handleReaction = async (messageId, emoji) => {
+        if (!user) return;
+        try {
+            const message = messages.find(m => m.id === messageId);
+            const userReacted = message.reactions?.[emoji]?.includes(user.uid);
+            if (userReacted) {
+                await removeReaction(messageId, user.uid, emoji);
+            } else {
+                await addReaction(messageId, user.uid, emoji);
+            }
+        } catch (error) {
+            console.error('リアクションエラー:', error);
         }
     };
 
@@ -435,6 +456,7 @@ export default function ChatPage() {
                 onUpdateServerIcon={handleServerIconUpdate}
                 currentUser={user}
             />
+
             {/* チャンネルサイドバー / フレンドリスト */}
             {isDMMode || currentServer?.id === 'dm' ? (
                 <FriendsList
@@ -469,6 +491,7 @@ export default function ChatPage() {
                     isMuted={isMuted}
                 />
             ) : null}
+
             {/* メインチャットエリア */}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative' }}>
                 {/* ヘッダー */}
@@ -593,6 +616,7 @@ export default function ChatPage() {
                         </div>
                     )}
                 </div>
+
                 {/* メッセージエリア */}
                 {currentChannel ? (
                     currentChannel.type === 'voice' ? (
@@ -638,85 +662,91 @@ export default function ChatPage() {
                                     gap: '16px',
                                     maxWidth: '80%'
                                 }}>
-                                    {voiceParticipants.map(participant => (
-                                        <div key={participant.id} style={{
-                                            display: 'flex',
-                                            flexDirection: 'column',
-                                            alignItems: 'center',
-                                            gap: '8px'
-                                        }}>
-                                            <div style={{
-                                                width: '80px',
-                                                height: '80px',
-                                                borderRadius: '50%',
-                                                backgroundColor: speakingUsers.has(participant.id) ? '#43b581' : '#5865f2',
+                                    {voiceParticipants.map(participant => {
+                                        // 安全に名前を取得
+                                        const name = participant.name || '匿名';
+                                        const initial = name && typeof name === 'string' ? name.charAt(0).toUpperCase() : '?';
+
+                                        return (
+                                            <div key={participant.id} style={{
                                                 display: 'flex',
+                                                flexDirection: 'column',
                                                 alignItems: 'center',
-                                                justifyContent: 'center',
-                                                color: 'white',
-                                                fontSize: '32px',
-                                                fontWeight: '600',
-                                                border: speakingUsers.has(participant.id) ? '4px solid #43b581' : '4px solid transparent',
-                                                transition: 'all 0.2s ease',
-                                                position: 'relative'
+                                                gap: '8px'
                                             }}>
-                                                {participant.name.charAt(0).toUpperCase()}
+                                                <div style={{
+                                                    width: '80px',
+                                                    height: '80px',
+                                                    borderRadius: '50%',
+                                                    backgroundColor: speakingUsers.has(participant.id) ? '#43b581' : '#5865f2',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    color: 'white',
+                                                    fontSize: '32px',
+                                                    fontWeight: '600',
+                                                    border: speakingUsers.has(participant.id) ? '4px solid #43b581' : '4px solid transparent',
+                                                    transition: 'all 0.2s ease',
+                                                    position: 'relative'
+                                                }}>
+                                                    {initial}
 
-                                                {/* 喋っているインジケーター */}
-                                                {speakingUsers.has(participant.id) && (
-                                                    <div style={{
-                                                        position: 'absolute',
-                                                        bottom: '-4px',
-                                                        right: '-4px',
-                                                        width: '16px',
-                                                        height: '16px',
-                                                        borderRadius: '50%',
-                                                        backgroundColor: '#43b581',
-                                                        border: '2px solid #36393f',
-                                                        animation: 'pulse 1.5s infinite'
-                                                    }} />
-                                                )}
+                                                    {/* 喋っているインジケーター */}
+                                                    {speakingUsers.has(participant.id) && (
+                                                        <div style={{
+                                                            position: 'absolute',
+                                                            bottom: '-4px',
+                                                            right: '-4px',
+                                                            width: '16px',
+                                                            height: '16px',
+                                                            borderRadius: '50%',
+                                                            backgroundColor: '#43b581',
+                                                            border: '2px solid #36393f',
+                                                            animation: 'pulse 1.5s infinite'
+                                                        }} />
+                                                    )}
 
-                                                {/* ミュートインジケーター */}
-                                                {participant.muted && (
-                                                    <div style={{
-                                                        position: 'absolute',
-                                                        top: '-4px',
-                                                        right: '-4px',
-                                                        width: '16px',
-                                                        height: '16px',
-                                                        borderRadius: '50%',
-                                                        backgroundColor: '#ed4245',
-                                                        border: '2px solid #36393f',
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        justifyContent: 'center',
-                                                        fontSize: '10px'
-                                                    }}>
-                                                        🔇
-                                                    </div>
-                                                )}
+                                                    {/* ミュートインジケーター */}
+                                                    {participant.muted && (
+                                                        <div style={{
+                                                            position: 'absolute',
+                                                            top: '-4px',
+                                                            right: '-4px',
+                                                            width: '16px',
+                                                            height: '16px',
+                                                            borderRadius: '50%',
+                                                            backgroundColor: '#ed4245',
+                                                            border: '2px solid #36393f',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'center',
+                                                            fontSize: '10px'
+                                                        }}>
+                                                            🔇
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <span style={{
+                                                    color: '#ffffff',
+                                                    fontSize: '14px',
+                                                    fontWeight: '600',
+                                                    textAlign: 'center',
+                                                    maxWidth: '100px',
+                                                    overflow: 'hidden',
+                                                    textOverflow: 'ellipsis',
+                                                    whiteSpace: 'nowrap'
+                                                }}>
+                                                    {name}
+                                                </span>
+                                                <span style={{
+                                                    color: speakingUsers.has(participant.id) ? '#43b581' : '#b9bbbe',
+                                                    fontSize: '12px'
+                                                }}>
+                                                    {speakingUsers.has(participant.id) ? '会話中' : '待機中'}
+                                                </span>
                                             </div>
-                                            <span style={{
-                                                color: '#ffffff',
-                                                fontSize: '14px',
-                                                fontWeight: '600',
-                                                textAlign: 'center',
-                                                maxWidth: '100px',
-                                                overflow: 'hidden',
-                                                textOverflow: 'ellipsis',
-                                                whiteSpace: 'nowrap'
-                                            }}>
-                        {participant.name}
-                    </span>
-                                            <span style={{
-                                                color: speakingUsers.has(participant.id) ? '#43b581' : '#b9bbbe',
-                                                fontSize: '12px'
-                                            }}>
-                        {speakingUsers.has(participant.id) ? '会話中' : '待機中'}
-                    </span>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             )}
 
@@ -1097,7 +1127,7 @@ export default function ChatPage() {
                                         alignItems: 'center'
                                     }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            <image
+                                            <img
                                                 src={imageAttachment.url}
                                                 alt="添付画像"
                                                 style={{
@@ -1242,6 +1272,7 @@ export default function ChatPage() {
                         </p>
                     </div>
                 )}
+
                 {/* メンバーリストモーダル */}
                 {showMemberList && currentServer && currentServer.id !== 'dm' && (
                     <MemberList
@@ -1250,6 +1281,7 @@ export default function ChatPage() {
                         onClose={() => setShowMemberList(false)}
                     />
                 )}
+
                 {/* タグ管理モーダル */}
                 {showTagManager && currentServer && currentServer.id !== 'dm' && (
                     <div style={{
@@ -1306,6 +1338,7 @@ export default function ChatPage() {
                         </div>
                     </div>
                 )}
+
                 {/* 招待モーダル */}
                 {showInviteModal && currentServer && currentServer.id !== 'dm' && (
                     <div style={{
@@ -1393,6 +1426,7 @@ export default function ChatPage() {
                         </div>
                     </div>
                 )}
+
                 {/* ロール管理モーダル */}
                 {showRoleManager && currentServer && currentServer.id !== 'dm' && (
                     <RoleManager
@@ -1401,6 +1435,7 @@ export default function ChatPage() {
                         onClose={() => setShowRoleManager(false)}
                     />
                 )}
+
                 {/* 画像アップロードモーダル */}
                 {showImageUploader && (
                     <ImageUploader
@@ -1409,10 +1444,13 @@ export default function ChatPage() {
                     />
                 )}
             </div>
+
             {/* DM通知コンポーネントを追加 */}
             {user && <DMNotifications user={user} />}
+
             {/* サーバー招待通知 */}
             <ServerInvites user={user} />
+
             {/* ボイスチャンネル */}
             {isVoiceChannelActive && currentChannel?.type === 'voice' && (
                 <VoiceChannel
@@ -1444,6 +1482,7 @@ function ImageDisplay({ imageId }) {
                 setLoading(false);
             }
         };
+
         if (imageId) {
             fetchImage();
         }
@@ -1484,7 +1523,7 @@ function ImageDisplay({ imageId }) {
     }
 
     return (
-        <image
+        <img
             src={imageData.data}
             alt={imageData.name}
             style={{

@@ -1,4 +1,4 @@
-
+//components/MemberList.jsx
 import { useState, useEffect } from 'react';
 import { getServerMembers, updateMemberRoles, removeMemberFromServer } from '../lib/firestore';
 import UserProfile from './UserProfile';

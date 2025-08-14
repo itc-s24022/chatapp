@@ -1,25 +1,30 @@
-//components/ChannelSidebar.jsx
+// components/ChannelSidebar.jsx
 import { useState } from 'react';
-
-export default function ChannelSidebar({ 
-    server, 
-    channels, 
-    currentChannel, 
-    onChannelSelect, 
-    onCreateChannel,
-    user,
-    voiceParticipants = [],
-    speakingUsers = new Set(),
-    isMuted = false
-}) {
+export default function ChannelSidebar({
+                                           server,
+                                           channels,
+                                           currentChannel,
+                                           onChannelSelect,
+                                           onCreateChannel,
+                                           user,
+                                           voiceParticipants = [],
+                                           speakingUsers = new Set(),
+                                           isMuted = false
+                                       }) {
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [channelName, setChannelName] = useState('');
     const [channelType, setChannelType] = useState('text');
 
     const handleCreateChannel = () => {
-        if (!channelName.trim()) return;
+        // 安全に文字列を取得
+        const name = channelName ? channelName.trim() : '';
+        if (!name) {
+            alert('チャンネル名を入力してください');
+            return;
+        }
+
         onCreateChannel({
-            name: channelName.trim(),
+            name: name,
             type: channelType,
             serverId: server.id
         });
@@ -47,7 +52,7 @@ export default function ChannelSidebar({
                 }}>
                     ダイレクトメッセージ
                 </div>
-                
+
                 <div style={{ padding: '16px', flex: 1 }}>
                     <p style={{ color: '#b9bbbe', fontSize: '14px' }}>
                         フレンド機能は開発中です...
@@ -71,6 +76,7 @@ export default function ChannelSidebar({
                     100% { opacity: 1; transform: scale(1); }
                 }
             `}</style>
+
             {/* サーバー名ヘッダー */}
             <div style={{
                 padding: '12px 16px',
@@ -124,7 +130,7 @@ export default function ChannelSidebar({
                             +
                         </button>
                     </div>
-                    
+
                     {textChannels.map(channel => (
                         <div
                             key={channel.id}
@@ -195,11 +201,11 @@ export default function ChannelSidebar({
                             +
                         </button>
                     </div>
-                    
+
                     {voiceChannels.map(channel => {
                         const channelParticipants = voiceParticipants.filter(p => p.channelId === channel.id);
                         const isActiveChannel = currentChannel === channel.id;
-                        
+
                         return (
                             <div key={channel.id}>
                                 <div
@@ -239,64 +245,69 @@ export default function ChannelSidebar({
                                         <span style={{ fontSize: '14px', cursor: 'pointer' }}>⚙️</span>
                                     </div>
                                 </div>
-                                
+
                                 {/* 参加者リスト */}
                                 {channelParticipants.length > 0 && (
                                     <div style={{
                                         padding: '0 16px 8px 32px'
                                     }}>
-                                        {channelParticipants.map(participant => (
-                                            <div
-                                                key={participant.userId}
-                                                style={{
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    gap: '8px',
-                                                    padding: '4px 8px',
-                                                    borderRadius: '4px',
-                                                    cursor: 'pointer',
-                                                    transition: 'background-color 0.15s ease'
-                                                }}
-                                                onMouseOver={(e) => e.target.style.backgroundColor = '#40444b'}
-                                                onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}
-                                                title={participant.userName}
-                                            >
-                                                <div style={{
-                                                    width: '20px',
-                                                    height: '20px',
-                                                    borderRadius: '50%',
-                                                    backgroundColor: participant.userId === user?.uid ? '#5865f2' : '#43b581',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    justifyContent: 'center',
-                                                    color: 'white',
-                                                    fontSize: '10px',
-                                                    fontWeight: '600'
-                                                }}>
-                                                    {participant.userName.charAt(0).toUpperCase()}
+                                        {channelParticipants.map(participant => {
+                                            // 安全に名前を取得
+                                            const name = participant.userName || '匿名';
+                                            const initial = name && typeof name === 'string' ? name.charAt(0).toUpperCase() : '?';
+
+                                            return (
+                                                <div
+                                                    key={participant.userId}
+                                                    style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '8px',
+                                                        padding: '4px 8px',
+                                                        borderRadius: '4px',
+                                                        cursor: 'pointer',
+                                                        transition: 'background-color 0.15s ease'
+                                                    }}
+                                                    onMouseOver={(e) => e.target.style.backgroundColor = '#40444b'}
+                                                    onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}
+                                                    title={name}
+                                                >
+                                                    <div style={{
+                                                        width: '20px',
+                                                        height: '20px',
+                                                        borderRadius: '50%',
+                                                        backgroundColor: participant.userId === user?.uid ? '#5865f2' : '#43b581',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center',
+                                                        color: 'white',
+                                                        fontSize: '10px',
+                                                        fontWeight: '600'
+                                                    }}>
+                                                        {initial}
+                                                    </div>
+                                                    <span style={{
+                                                        color: '#8e9297',
+                                                        fontSize: '14px',
+                                                        flex: 1
+                                                    }}>
+                                                        {name}
+                                                    </span>
+                                                    <span style={{
+                                                        color: '#8e9297',
+                                                        fontSize: '12px'
+                                                    }}>
+                                                        {participant.userId === user?.uid ? (isMuted ? '🔇' : '🎤') : '🔇'}
+                                                    </span>
                                                 </div>
-                                                <span style={{ 
-                                                    color: '#8e9297', 
-                                                    fontSize: '14px',
-                                                    flex: 1
-                                                }}>
-                                                    {participant.userName}
-                                                </span>
-                                                <span style={{ 
-                                                    color: '#8e9297', 
-                                                    fontSize: '12px'
-                                                }}>
-                                                    {participant.userId === user?.uid ? (isMuted ? '🔇' : '🎤') : '🔇'}
-                                                </span>
-                                            </div>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                 )}
                             </div>
                         );
                     })}
                 </div>
-                
 
             </div>
 
@@ -373,7 +384,7 @@ export default function ChannelSidebar({
                         }}>
                             チャンネルを作成
                         </h2>
-                        
+
                         <div style={{ marginBottom: '20px' }}>
                             <label style={{
                                 color: '#b9bbbe',
@@ -418,7 +429,7 @@ export default function ChannelSidebar({
                                 </label>
                             </div>
                         </div>
-                        
+
                         <div style={{ marginBottom: '20px' }}>
                             <label style={{
                                 color: '#b9bbbe',
@@ -433,7 +444,7 @@ export default function ChannelSidebar({
                             <input
                                 type="text"
                                 value={channelName}
-                                onChange={(e) => setChannelName(e.target.value)}
+                                onChange={(e) => setChannelName(e.target)}
                                 placeholder="新しいチャンネル"
                                 style={{
                                     width: '100%',
@@ -453,7 +464,7 @@ export default function ChannelSidebar({
                                 autoFocus
                             />
                         </div>
-                        
+
                         <div style={{
                             display: 'flex',
                             justifyContent: 'flex-end',
