@@ -1,5 +1,6 @@
 // components/ChannelSidebar.jsx
 import { useState } from 'react';
+
 export default function ChannelSidebar({
                                            server,
                                            channels,
@@ -22,7 +23,6 @@ export default function ChannelSidebar({
             alert('チャンネル名を入力してください');
             return;
         }
-
         onCreateChannel({
             name: name,
             type: channelType,
@@ -34,6 +34,16 @@ export default function ChannelSidebar({
 
     const textChannels = channels.filter(ch => ch.type === 'text' || !ch.type);
     const voiceChannels = channels.filter(ch => ch.type === 'voice');
+
+    // チャンネル名が空かどうかをチェックする関数
+    const isChannelNameEmpty = () => {
+        return !channelName || typeof channelName !== 'string' || channelName.trim() === '';
+    };
+
+    // チャンネル名を安全にトリムする関数
+    const getTrimmedChannelName = () => {
+        return channelName && typeof channelName === 'string' ? channelName.trim() : '';
+    };
 
     if (server?.id === 'dm') {
         return (
@@ -52,7 +62,6 @@ export default function ChannelSidebar({
                 }}>
                     ダイレクトメッセージ
                 </div>
-
                 <div style={{ padding: '16px', flex: 1 }}>
                     <p style={{ color: '#b9bbbe', fontSize: '14px' }}>
                         フレンド機能は開発中です...
@@ -76,7 +85,6 @@ export default function ChannelSidebar({
                     100% { opacity: 1; transform: scale(1); }
                 }
             `}</style>
-
             {/* サーバー名ヘッダー */}
             <div style={{
                 padding: '12px 16px',
@@ -92,7 +100,6 @@ export default function ChannelSidebar({
                 {server?.name || 'サーバー'}
                 <span style={{ fontSize: '18px' }}>⌄</span>
             </div>
-
             {/* チャンネルリスト */}
             <div style={{ flex: 1, overflowY: 'auto' }}>
                 {/* テキストチャンネルセクション */}
@@ -130,7 +137,6 @@ export default function ChannelSidebar({
                             +
                         </button>
                     </div>
-
                     {textChannels.map(channel => (
                         <div
                             key={channel.id}
@@ -165,7 +171,6 @@ export default function ChannelSidebar({
                         </div>
                     ))}
                 </div>
-
                 {/* ボイスチャンネルセクション */}
                 <div style={{ margin: '24px 0 8px 0' }}>
                     <div style={{
@@ -201,11 +206,9 @@ export default function ChannelSidebar({
                             +
                         </button>
                     </div>
-
                     {voiceChannels.map(channel => {
                         const channelParticipants = voiceParticipants.filter(p => p.channelId === channel.id);
                         const isActiveChannel = currentChannel === channel.id;
-
                         return (
                             <div key={channel.id}>
                                 <div
@@ -245,7 +248,6 @@ export default function ChannelSidebar({
                                         <span style={{ fontSize: '14px', cursor: 'pointer' }}>⚙️</span>
                                     </div>
                                 </div>
-
                                 {/* 参加者リスト */}
                                 {channelParticipants.length > 0 && (
                                     <div style={{
@@ -255,7 +257,6 @@ export default function ChannelSidebar({
                                             // 安全に名前を取得
                                             const name = participant.userName || '匿名';
                                             const initial = name && typeof name === 'string' ? name.charAt(0).toUpperCase() : '?';
-
                                             return (
                                                 <div
                                                     key={participant.userId}
@@ -308,9 +309,7 @@ export default function ChannelSidebar({
                         );
                     })}
                 </div>
-
             </div>
-
             {/* ユーザー情報エリア */}
             {user && (
                 <div style={{
@@ -354,7 +353,6 @@ export default function ChannelSidebar({
                     </div>
                 </div>
             )}
-
             {/* チャンネル作成モーダル */}
             {showCreateModal && (
                 <div style={{
@@ -384,7 +382,6 @@ export default function ChannelSidebar({
                         }}>
                             チャンネルを作成
                         </h2>
-
                         <div style={{ marginBottom: '20px' }}>
                             <label style={{
                                 color: '#b9bbbe',
@@ -429,7 +426,6 @@ export default function ChannelSidebar({
                                 </label>
                             </div>
                         </div>
-
                         <div style={{ marginBottom: '20px' }}>
                             <label style={{
                                 color: '#b9bbbe',
@@ -443,8 +439,8 @@ export default function ChannelSidebar({
                             </label>
                             <input
                                 type="text"
-                                value={channelName}
-                                onChange={(e) => setChannelName(e.target)}
+                                value={channelName || ''}
+                                onChange={(e) => setChannelName(e.target.value || '')}
                                 placeholder="新しいチャンネル"
                                 style={{
                                     width: '100%',
@@ -464,7 +460,6 @@ export default function ChannelSidebar({
                                 autoFocus
                             />
                         </div>
-
                         <div style={{
                             display: 'flex',
                             justifyContent: 'flex-end',
@@ -490,14 +485,14 @@ export default function ChannelSidebar({
                             </button>
                             <button
                                 onClick={handleCreateChannel}
-                                disabled={!channelName.trim()}
+                                disabled={isChannelNameEmpty()}
                                 style={{
-                                    backgroundColor: channelName.trim() ? '#5865f2' : '#4f545c',
+                                    backgroundColor: !isChannelNameEmpty() ? '#5865f2' : '#4f545c',
                                     border: 'none',
                                     color: 'white',
                                     padding: '12px 16px',
                                     borderRadius: '4px',
-                                    cursor: channelName.trim() ? 'pointer' : 'not-allowed',
+                                    cursor: !isChannelNameEmpty() ? 'pointer' : 'not-allowed',
                                     fontSize: '14px',
                                     fontWeight: '500'
                                 }}
