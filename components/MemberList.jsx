@@ -1,4 +1,4 @@
-
+//components/MemberList.jsx
 import { useState, useEffect } from 'react';
 import { getServerMembers, updateMemberRoles, removeMemberFromServer } from '../lib/firestore';
 import UserProfile from './UserProfile';
@@ -109,7 +109,7 @@ export default function MemberList({ server, currentUser, onClose }) {
                                     gap: '12px',
                                     cursor: 'pointer'
                                 }}
-                                onClick={() => setSelectedUser(member)}>
+                                     onClick={() => setSelectedUser(member)}>
                                     <div style={{
                                         width: '40px',
                                         height: '40px',
