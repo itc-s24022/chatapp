@@ -1,7 +1,8 @@
-// server.js
-const { createServer } = require('http');
-const next = require('next');
-const { Server } = require('socket.io');
+// server.mjs
+import { createServer } from 'http';
+import next from 'next';
+import { Server } from 'socket.io';
+
 const dev = process.env.NODE_ENV !== 'production';
 const app = next({ dev });
 const handle = app.getRequestHandler();
@@ -67,51 +68,30 @@ app.prepare().then(() => {
     // WebRTCオファー処理
     socket.on('offer', async (data) => {
       const { offer, to, from } = data;
-
-      // 特定のユーザーにオファーを転送
-      io.to(to).emit('offer', {
-        offer,
-        from
-      });
+      io.to(to).emit('offer', { offer, from });
     });
 
     // WebRTCアンサー処理
     socket.on('answer', async (data) => {
       const { answer, to, from } = data;
-
-      // 特定のユーザーにアンサーを転送
-      io.to(to).emit('answer', {
-        answer,
-        from
-      });
+      io.to(to).emit('answer', { answer, from });
     });
 
     // ICE候補処理
     socket.on('ice-candidate', async (data) => {
       const { candidate, to, from } = data;
-
-      // 特定のユーザーにICE候補を転送
-      io.to(to).emit('ice-candidate', {
-        candidate,
-        from
-      });
+      io.to(to).emit('ice-candidate', { candidate, from });
     });
 
     // ユーザーの喋っている状態更新
     socket.on('user-speaking', (data) => {
       const { channelId, userId, isSpeaking } = data;
-
-      // 全員に喋っている状態を通知
-      io.to(channelId).emit('user-speaking-update', {
-        userId,
-        isSpeaking
-      });
+      io.to(channelId).emit('user-speaking-update', { userId, isSpeaking });
     });
 
     // ミュート状態変更
     socket.on('mute-state-changed', (data) => {
       const { channelId, userId, isMuted } = data;
-
       if (voiceChannels[channelId] && voiceChannels[channelId].participants[userId]) {
         voiceChannels[channelId].participants[userId].isMuted = isMuted;
       }
@@ -120,7 +100,6 @@ app.prepare().then(() => {
     // 聴覚不能状態変更
     socket.on('deafen-state-changed', (data) => {
       const { channelId, userId, isDeafened } = data;
-
       if (voiceChannels[channelId] && voiceChannels[channelId].participants[userId]) {
         voiceChannels[channelId].participants[userId].isDeafened = isDeafened;
       }
@@ -129,7 +108,6 @@ app.prepare().then(() => {
     // ビデオ有効化
     socket.on('video-enabled', (data) => {
       const { channelId, userId } = data;
-
       if (voiceChannels[channelId] && voiceChannels[channelId].participants[userId]) {
         voiceChannels[channelId].participants[userId].isVideoEnabled = true;
       }
@@ -138,7 +116,6 @@ app.prepare().then(() => {
     // ビデオ無効化
     socket.on('video-disabled', (data) => {
       const { channelId, userId } = data;
-
       if (voiceChannels[channelId] && voiceChannels[channelId].participants[userId]) {
         voiceChannels[channelId].participants[userId].isVideoEnabled = false;
       }
@@ -147,7 +124,6 @@ app.prepare().then(() => {
     // 画面共有開始
     socket.on('screen-share-started', (data) => {
       const { channelId, userId } = data;
-
       if (voiceChannels[channelId] && voiceChannels[channelId].participants[userId]) {
         voiceChannels[channelId].participants[userId].isScreenSharing = true;
       }
@@ -156,7 +132,6 @@ app.prepare().then(() => {
     // 画面共有停止
     socket.on('screen-share-stopped', (data) => {
       const { channelId, userId } = data;
-
       if (voiceChannels[channelId] && voiceChannels[channelId].participants[userId]) {
         voiceChannels[channelId].participants[userId].isScreenSharing = false;
       }
@@ -165,25 +140,16 @@ app.prepare().then(() => {
     // ボイスチャンネルから退出
     socket.on('leave-voice-channel', (data) => {
       const { channelId, userId } = data;
-
       if (voiceChannels[channelId] && voiceChannels[channelId].participants[userId]) {
-        // 参加者を削除
         delete voiceChannels[channelId].participants[userId];
-
-        // チャンネルから退出
         socket.leave(channelId);
 
-        // 参加者リストを全員に送信
         io.to(channelId).emit('voice-participants',
             Object.values(voiceChannels[channelId].participants)
                 .map(p => ({ userId: p.socketId, userName: p.userName }))
         );
 
-        // 他の参加者に退出を通知
-        socket.to(channelId).emit('user-left-voice', {
-          userId
-        });
-
+        socket.to(channelId).emit('user-left-voice', { userId });
         console.log(`ユーザー ${userId} がチャンネル ${channelId} から退出しました`);
       }
     });
@@ -192,22 +158,17 @@ app.prepare().then(() => {
     socket.on('disconnect', () => {
       console.log('ユーザーが切断しました:', socket.id);
 
-      // 全てのチャンネルからユーザーを探して削除
       Object.keys(voiceChannels).forEach(channelId => {
         Object.keys(voiceChannels[channelId].participants).forEach(userId => {
           if (voiceChannels[channelId].participants[userId].socketId === socket.id) {
             delete voiceChannels[channelId].participants[userId];
 
-            // 参加者リストを全員に送信
             io.to(channelId).emit('voice-participants',
                 Object.values(voiceChannels[channelId].participants)
                     .map(p => ({ userId: p.socketId, userName: p.userName }))
             );
 
-            // 他の参加者に退出を通知
-            socket.to(channelId).emit('user-left-voice', {
-              userId
-            });
+            socket.to(channelId).emit('user-left-voice', { userId });
           }
         });
       });
