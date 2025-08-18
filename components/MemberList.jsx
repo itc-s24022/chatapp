@@ -109,7 +109,7 @@ export default function MemberList({ server, currentUser, onClose }) {
                                     gap: '12px',
                                     cursor: 'pointer'
                                 }}
-                                onClick={() => setSelectedUser(member)}>
+                                     onClick={() => setSelectedUser(member)}>
                                     <div style={{
                                         width: '40px',
                                         height: '40px',

@@ -23,6 +23,7 @@ export default function ChannelSidebar({
             alert('チャンネル名を入力してください');
             return;
         }
+
         onCreateChannel({
             name: name,
             type: channelType,
@@ -85,6 +86,7 @@ export default function ChannelSidebar({
                     100% { opacity: 1; transform: scale(1); }
                 }
             `}</style>
+
             {/* サーバー名ヘッダー */}
             <div style={{
                 padding: '12px 16px',
@@ -137,6 +139,7 @@ export default function ChannelSidebar({
                             +
                         </button>
                     </div>
+
                     {textChannels.map(channel => (
                         <div
                             key={channel.id}
@@ -206,9 +209,11 @@ export default function ChannelSidebar({
                             +
                         </button>
                     </div>
+
                     {voiceChannels.map(channel => {
                         const channelParticipants = voiceParticipants.filter(p => p.channelId === channel.id);
                         const isActiveChannel = currentChannel === channel.id;
+
                         return (
                             <div key={channel.id}>
                                 <div
@@ -439,8 +444,8 @@ export default function ChannelSidebar({
                             </label>
                             <input
                                 type="text"
-                                value={channelName || ''}
-                                onChange={(e) => setChannelName(e.target.value || '')}
+                                value={channelName}
+                                onChange={(e) => setChannelName(e.target)}
                                 placeholder="新しいチャンネル"
                                 style={{
                                     width: '100%',
