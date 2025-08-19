@@ -1,320 +1,418 @@
-
-// components/MemberList.jsx
 import { useState, useEffect } from 'react';
-import { getServerMembers, updateMemberRoles, removeMemberFromServer, getServerRoles } from '../lib/firestore';
-import UserProfile from './UserProfile';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../lib/firebase';
+import {
+    sendFriendRequest,
+    getFriendRequests,
+    acceptFriendRequest,
+    declineFriendRequest,
+    getUserFriends,
+    searchUserByEmail,
+    createDMChannel
+} from '../lib/firestore';
 
-export default function MemberList({ server, currentUser, onClose }) {
-    const [members, setMembers] = useState([]);
-    const [roles, setRoles] = useState([]);
-    const [selectedUser, setSelectedUser] = useState(null);
-    const [loading, setLoading] = useState(true);
-
-    const isOwner = server?.ownerId === currentUser?.uid;
+export default function FriendsList({ user }) {
+    const [friends, setFriends] = useState([]);
+    const [friendRequests, setFriendRequests] = useState([]);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [activeTab, setActiveTab] = useState('friends');
+    const [searchResults, setSearchResults] = useState([]);
+    const [loading, setLoading] = useState(false);
 
     useEffect(() => {
-        if (!server?.id) return;
-
-        // メンバー一覧を取得
-        const unsubscribeMembers = getServerMembers(server.id, (snapshot) => {
-            const memberList = snapshot.docs.map(doc => ({
+        if (!user) return;
+        const unsubscribeFriends = getUserFriends(user.uid, (snapshot) => {
+            const friendList = snapshot.docs.map(doc => {
+                const data = doc.data();
+                return {
+                    id: doc.id,
+                    ...data,
+                    friendId: data.user1 === user.uid ? data.user2 : data.user1
+                };
+            });
+            setFriends(friendList);
+        });
+        const unsubscribeRequests = getFriendRequests(user.uid, (snapshot) => {
+            const requestList = snapshot.docs.map(doc => ({
                 id: doc.id,
                 ...doc.data()
             }));
-            setMembers(memberList);
-            setLoading(false);
+            setFriendRequests(requestList);
         });
-
-        // ロール一覧を取得
-        const unsubscribeRoles = getServerRoles(server.id, (snapshot) => {
-            const roleList = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            }));
-            setRoles(roleList);
-        });
-
         return () => {
-            unsubscribeMembers();
-            unsubscribeRoles();
+            unsubscribeFriends();
+            unsubscribeRequests();
         };
-    }, [server?.id]);
+    }, [user]);
 
-    const getMemberRoles = (member) => {
-        if (!member.roles || !Array.isArray(member.roles)) return [];
-        return member.roles.map(roleId => {
-            const role = roles.find(r => r.id === roleId);
-            return role ? { ...role, id: roleId } : null;
-        }).filter(Boolean);
-    };
-
-    const handleRoleChange = async (memberId, roleId, addRole) => {
+    const handleSearch = async () => {
+        if (!searchQuery.trim()) return;
+        setLoading(true);
         try {
-            const member = members.find(m => m.id === memberId);
-            if (!member) return;
-
-            let newRoles = [...(member.roles || [])];
-
-            if (addRole) {
-                // ロールを追加
-                if (!newRoles.includes(roleId)) {
-                    newRoles.push(roleId);
-                }
-            } else {
-                // ロールを削除
-                newRoles = newRoles.filter(id => id !== roleId);
-
-                // @everyoneロールがなければ追加
-                const everyoneRole = roles.find(r => r.isDefault);
-                if (everyoneRole && !newRoles.includes(everyoneRole.id)) {
-                    newRoles.push(everyoneRole.id);
-                }
-            }
-
-            await updateMemberRoles(server.id, member.uid, newRoles);
+            const results = await searchUserByEmail(searchQuery.trim());
+            setSearchResults(results.filter(result => result.uid !== user.uid));
         } catch (error) {
-            console.error('メンバーロール変更エラー:', error);
-            alert('メンバーロールの変更に失敗しました: ' + error.message);
+            console.error('検索エラー:', error);
+            alert('ユーザー検索に失敗しました');
+        } finally {
+            setLoading(false);
         }
     };
 
-    const handleRemoveMember = async (memberId) => {
-        if (confirm('このメンバーをサーバーから削除しますか？')) {
-            try {
-                await removeMemberFromServer(server.id, memberId);
-            } catch (error) {
-                console.error('メンバー削除エラー:', error);
-                alert('メンバーの削除に失敗しました: ' + error.message);
-            }
+    const handleSendFriendRequest = async (targetUser) => {
+        try {
+            await sendFriendRequest(
+                user.uid,
+                user.displayName || '匿名',
+                targetUser.uid || targetUser.id,
+                targetUser.displayName || '匿名'
+            );
+            alert('フレンド申請を送信しました');
+            setSearchResults([]);
+            setSearchQuery('');
+        } catch (error) {
+            console.error('フレンド申請エラー:', error);
+            alert('フレンド申請に失敗しました');
+        }
+    };
+
+    const handleAcceptRequest = async (requestId, fromUserId, fromUserName) => {
+        try {
+            await acceptFriendRequest(
+                requestId,
+                user.uid,
+                user.displayName || '匿名',
+                fromUserId,
+                fromUserName || '匿名'
+            );
+        } catch (error) {
+            console.error('フレンド申請受諾エラー:', error);
+            alert('フレンド申請の受諾に失敗しました');
+        }
+    };
+
+    const handleDeclineRequest = async (requestId) => {
+        try {
+            await declineFriendRequest(requestId);
+        } catch (error) {
+            console.error('フレンド申請拒否エラー:', error);
+            alert('フレンド申請の拒否に失敗しました');
+        }
+    };
+
+    const handleStartDM = async (friendId) => {
+        try {
+            // Fetch friend's display name
+            const friendRef = doc(db, 'users', friendId);
+            const friendDoc = await getDoc(friendRef);
+            const friendName = friendDoc.exists() ? (friendDoc.data().displayName || '匿名') : '匿名';
+
+            await createDMChannel(
+                user.uid,
+                friendId,
+                user.displayName || '匿名',
+                friendName
+            );
+            alert('DMチャンネルを作成しました');
+        } catch (error) {
+            console.error('DM作成エラー:', error);
+            alert('DM作成に失敗しました');
         }
     };
 
     return (
         <div style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.85)',
+            width: '240px',
+            backgroundColor: '#2f3136',
             display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000
+            flexDirection: 'column',
+            height: '100vh'
         }}>
             <div style={{
-                backgroundColor: '#36393f',
-                borderRadius: '8px',
-                padding: '24px',
-                width: '600px',
-                maxWidth: '90vw',
-                maxHeight: '80vh',
-                overflow: 'hidden',
-                display: 'flex',
-                flexDirection: 'column'
+                padding: '12px 16px',
+                borderBottom: '1px solid #202225'
             }}>
-                <div style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    marginBottom: '20px'
+                <h2 style={{
+                    color: '#ffffff',
+                    fontSize: '16px',
+                    fontWeight: '600',
+                    margin: '0 0 16px 0'
                 }}>
-                    <h2 style={{
-                        color: '#ffffff',
-                        fontSize: '20px',
-                        fontWeight: '600',
-                        margin: 0
-                    }}>
-                        メンバー一覧 - {server?.name}
-                    </h2>
+                    フレンド
+                </h2>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                     <button
-                        onClick={onClose}
+                        onClick={() => setActiveTab('friends')}
                         style={{
-                            background: 'none',
+                            backgroundColor: activeTab === 'friends' ? '#5865f2' : 'transparent',
+                            color: activeTab === 'friends' ? '#ffffff' : '#b9bbbe',
                             border: 'none',
-                            color: '#b9bbbe',
+                            padding: '8px 12px',
+                            borderRadius: '4px',
                             cursor: 'pointer',
-                            fontSize: '18px'
+                            textAlign: 'left',
+                            fontSize: '14px'
                         }}
                     >
-                        ✕
+                        すべて ({friends.length})
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('requests')}
+                        style={{
+                            backgroundColor: activeTab === 'requests' ? '#5865f2' : 'transparent',
+                            color: activeTab === 'requests' ? '#ffffff' : '#b9bbbe',
+                            border: 'none',
+                            padding: '8px 12px',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                            fontSize: '14px',
+                            position: 'relative'
+                        }}
+                    >
+                        申請中
+                        {friendRequests.length > 0 && (
+                            <span style={{
+                                backgroundColor: '#ed4245',
+                                color: 'white',
+                                borderRadius: '10px',
+                                padding: '2px 6px',
+                                fontSize: '12px',
+                                marginLeft: '8px'
+                            }}>
+                                {friendRequests.length}
+                            </span>
+                        )}
                     </button>
                 </div>
-
-                {loading ? (
-                    <div style={{ color: '#b9bbbe', textAlign: 'center', padding: '20px' }}>
-                        読み込み中...
-                    </div>
-                ) : (
-                    <div style={{ flex: 1, overflowY: 'auto' }}>
-                        {members.map(member => (
-                            <div key={member.id} style={{
+            </div>
+            <div style={{ padding: '0 16px' }}>
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                    <input
+                        type="text"
+                        placeholder="メールアドレスで検索"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        style={{
+                            backgroundColor: '#202225',
+                            color: '#b9bbbe',
+                            border: 'none',
+                            borderRadius: '4px',
+                            padding: '8px 12px',
+                            fontSize: '14px',
+                            flex: 1
+                        }}
+                    />
+                    <button
+                        onClick={handleSearch}
+                        disabled={loading}
+                        style={{
+                            backgroundColor: '#5865f2',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '4px',
+                            padding: '8px 12px',
+                            cursor: 'pointer',
+                            fontSize: '14px',
+                            whiteSpace: 'nowrap'
+                        }}
+                    >
+                        {loading ? '検索中...' : '検索'}
+                    </button>
+                </div>
+                {searchResults.length > 0 && (
+                    <div style={{ marginBottom: '16px' }}>
+                        {searchResults.map(result => (
+                            <div key={result.uid} style={{
+                                backgroundColor: '#40444b',
+                                borderRadius: '4px',
+                                padding: '12px',
+                                marginBottom: '8px',
                                 display: 'flex',
                                 alignItems: 'center',
-                                justifyContent: 'space-between',
-                                padding: '12px',
-                                backgroundColor: '#2f3136',
-                                borderRadius: '4px',
-                                marginBottom: '8px'
+                                justifyContent: 'space-between'
                             }}>
-                                <div style={{
+                                <div>
+                                    <div style={{ color: '#ffffff', fontSize: '14px', fontWeight: '500' }}>
+                                        {result.displayName || "匿名"}
+                                    </div>
+                                    <div style={{ color: '#b9bbbe', fontSize: '12px' }}>
+                                        {result.email}
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => handleSendFriendRequest(result)}
+                                    style={{
+                                        backgroundColor: '#3ba55c',
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: '4px',
+                                        padding: '6px 12px',
+                                        cursor: 'pointer',
+                                        fontSize: '12px'
+                                    }}
+                                >
+                                    フレンド申請
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '16px' }}>
+                {activeTab === 'friends' ? (
+                    <div>
+                        {friends.length === 0 ? (
+                            <p style={{ color: '#b9bbbe', fontSize: '14px', textAlign: 'center' }}>
+                                フレンドがいません
+                            </p>
+                        ) : (
+                            friends.map(friend => (
+                                <div key={friend.id} style={{
                                     display: 'flex',
                                     alignItems: 'center',
                                     gap: '12px',
-                                    cursor: 'pointer'
+                                    padding: '8px',
+                                    borderRadius: '4px',
+                                    cursor: 'pointer',
+                                    marginBottom: '4px',
+                                    justifyContent: 'space-between'
                                 }}
-                                     onClick={() => setSelectedUser(member)}>
+                                     onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#40444b'}
+                                     onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                        <div style={{
+                                            width: '32px',
+                                            height: '32px',
+                                            borderRadius: '50%',
+                                            backgroundColor: '#5865f2',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            fontSize: '14px',
+                                            fontWeight: '600',
+                                            color: 'white'
+                                        }}>
+                                            {(friend.displayName || "匿").charAt(0).toUpperCase()}
+                                        </div>
+                                        <div>
+                                            <div style={{
+                                                color: '#ffffff',
+                                                fontSize: '14px',
+                                                fontWeight: '500'
+                                            }}>
+                                                {friend.displayName || "匿名"}
+                                            </div>
+                                            <div style={{
+                                                color: '#43b581',
+                                                fontSize: '12px'
+                                            }}>
+                                                オンライン
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() => handleStartDM(friend.friendId)}
+                                        style={{
+                                            backgroundColor: '#5865f2',
+                                            color: 'white',
+                                            border: 'none',
+                                            borderRadius: '4px',
+                                            padding: '6px 12px',
+                                            cursor: 'pointer',
+                                            fontSize: '12px',
+                                            whiteSpace: 'nowrap'
+                                        }}
+                                    >
+                                        DM
+                                    </button>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                ) : (
+                    <div>
+                        {friendRequests.length === 0 ? (
+                            <p style={{ color: '#b9bbbe', fontSize: '14px', textAlign: 'center' }}>
+                                申請はありません
+                            </p>
+                        ) : (
+                            friendRequests.map(request => (
+                                <div key={request.id} style={{
+                                    backgroundColor: '#40444b',
+                                    borderRadius: '4px',
+                                    padding: '12px',
+                                    marginBottom: '8px'
+                                }}>
                                     <div style={{
-                                        width: '40px',
-                                        height: '40px',
-                                        borderRadius: '50%',
-                                        backgroundColor: '#5865f2',
                                         display: 'flex',
                                         alignItems: 'center',
-                                        justifyContent: 'center',
-                                        fontSize: '16px',
-                                        fontWeight: '600',
-                                        color: 'white'
+                                        gap: '12px',
+                                        marginBottom: '8px'
                                     }}>
-                                        {(member.displayName || "匿").charAt(0).toUpperCase()}
-                                    </div>
-                                    <div>
                                         <div style={{
-                                            color: '#ffffff',
-                                            fontSize: '16px',
-                                            fontWeight: '500'
-                                        }}>
-                                            {member.displayName || "匿名"}
-                                            {member.uid === server.ownerId && (
-                                                <span style={{
-                                                    color: '#faa61a',
-                                                    fontSize: '12px',
-                                                    marginLeft: '8px'
-                                                }}>
-                                                    👑 オーナー
-                                                </span>
-                                            )}
-                                        </div>
-                                        <div style={{
-                                            color: '#b9bbbe',
-                                            fontSize: '14px'
-                                        }}>
-                                            {member.uid === currentUser.uid ? 'あなた' : 'メンバー'}
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* ロール管理 */}
-                                {isOwner && member.uid !== currentUser.uid && (
-                                    <div style={{ minWidth: '200px' }}>
-                                        <div style={{
+                                            width: '32px',
+                                            height: '32px',
+                                            borderRadius: '50%',
+                                            backgroundColor: '#5865f2',
                                             display: 'flex',
-                                            flexWrap: 'wrap',
-                                            gap: '4px',
-                                            marginBottom: '8px'
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            fontSize: '14px',
+                                            fontWeight: '600',
+                                            color: 'white'
                                         }}>
-                                            {getMemberRoles(member).map(role => (
-                                                <div key={role.id} style={{
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    gap: '4px',
-                                                    backgroundColor: '#40444b',
-                                                    padding: '2px 6px',
-                                                    borderRadius: '12px'
-                                                }}>
-                                                    <div style={{
-                                                        width: '8px',
-                                                        height: '8px',
-                                                        borderRadius: '50%',
-                                                        backgroundColor: role.color
-                                                    }} />
-                                                    <span style={{
-                                                        color: '#dcddde',
-                                                        fontSize: '12px'
-                                                    }}>
-                                                        {role.name}
-                                                    </span>
-                                                    {!role.isDefault && (
-                                                        <button
-                                                            onClick={() => handleRoleChange(member.id, role.id, false)}
-                                                            style={{
-                                                                background: 'none',
-                                                                border: 'none',
-                                                                color: '#ed4245',
-                                                                cursor: 'pointer',
-                                                                fontSize: '10px',
-                                                                padding: '0',
-                                                                marginLeft: '2px'
-                                                            }}
-                                                        >
-                                                            ✕
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            ))}
+                                            {(request.fromUserName || "匿").charAt(0).toUpperCase()}
                                         </div>
-
-                                        {/* ロール追加ドロップダウン */}
-                                        <select
-                                            onChange={(e) => {
-                                                if (e.target.value) {
-                                                    handleRoleChange(member.id, e.target.value, true);
-                                                    e.target.value = '';
-                                                }
-                                            }}
+                                        <div>
+                                            <div style={{
+                                                color: '#ffffff',
+                                                fontSize: '14px',
+                                                fontWeight: '500'
+                                            }}>
+                                                {request.fromUserName || "匿名"}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div style={{
+                                        display: 'flex',
+                                        gap: '8px'
+                                    }}>
+                                        <button
+                                            onClick={() => handleAcceptRequest(request.id, request.fromUserId, request.fromUserName)}
                                             style={{
-                                                backgroundColor: '#40444b',
-                                                color: '#dcddde',
+                                                backgroundColor: '#3ba55c',
+                                                color: 'white',
                                                 border: 'none',
                                                 borderRadius: '4px',
-                                                padding: '4px 8px',
+                                                padding: '6px 12px',
+                                                cursor: 'pointer',
                                                 fontSize: '12px',
-                                                width: '100%'
+                                                flex: 1
                                             }}
-                                            value=""
                                         >
-                                            <option value="">ロールを追加...</option>
-                                            {roles
-                                                .filter(role => !role.isDefault && !getMemberRoles(member).some(r => r.id === role.id))
-                                                .map(role => (
-                                                    <option key={role.id} value={role.id}>
-                                                        {role.name}
-                                                    </option>
-                                                ))}
-                                        </select>
-
-                                        {/* 削除ボタン */}
+                                            承認
+                                        </button>
                                         <button
-                                            onClick={() => handleRemoveMember(member.uid)}
+                                            onClick={() => handleDeclineRequest(request.id)}
                                             style={{
                                                 backgroundColor: '#ed4245',
                                                 color: 'white',
                                                 border: 'none',
                                                 borderRadius: '4px',
-                                                padding: '4px 8px',
+                                                padding: '6px 12px',
                                                 cursor: 'pointer',
                                                 fontSize: '12px',
-                                                marginTop: '8px',
-                                                width: '100%'
+                                                flex: 1
                                             }}
                                         >
-                                            サーバーから削除
+                                            拒否
                                         </button>
                                     </div>
-                                )}
-                            </div>
-                        ))}
+                                </div>
+                            ))
+                        )}
                     </div>
-                )}
-
-                {selectedUser && (
-                    <UserProfile
-                        user={selectedUser}
-                        onClose={() => setSelectedUser(null)}
-                        onSendFriendRequest={() => {}}
-                        onCreateDM={() => {}}
-                        isFriend={false}
-                    />
                 )}
             </div>
         </div>

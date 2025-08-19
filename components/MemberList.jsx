@@ -1,17 +1,21 @@
-//components/MemberList.jsx
+// components/MemberList.jsx
 import { useState, useEffect } from 'react';
-import { getServerMembers, updateMemberRoles, removeMemberFromServer } from '../lib/firestore';
+import { getServerMembers, updateMemberRoles, removeMemberFromServer, getServerRoles } from '../lib/firestore';
 import UserProfile from './UserProfile';
 
 export default function MemberList({ server, currentUser, onClose }) {
     const [members, setMembers] = useState([]);
+    const [roles, setRoles] = useState([]);
     const [selectedUser, setSelectedUser] = useState(null);
     const [loading, setLoading] = useState(true);
+
+    const isOwner = server?.ownerId === currentUser?.uid;
 
     useEffect(() => {
         if (!server?.id) return;
 
-        const unsubscribe = getServerMembers(server.id, (snapshot) => {
+        // メンバー一覧を取得
+        const unsubscribeMembers = getServerMembers(server.id, (snapshot) => {
             const memberList = snapshot.docs.map(doc => ({
                 id: doc.id,
                 ...doc.data()
@@ -20,20 +24,69 @@ export default function MemberList({ server, currentUser, onClose }) {
             setLoading(false);
         });
 
-        return () => unsubscribe();
+        // ロール一覧を取得
+        const unsubscribeRoles = getServerRoles(server.id, (snapshot) => {
+            const roleList = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+            }));
+            setRoles(roleList);
+        });
+
+        return () => {
+            unsubscribeMembers();
+            unsubscribeRoles();
+        };
     }, [server?.id]);
 
-    const handleRoleChange = async (memberId, newRole) => {
-        await updateMemberRoles(server.id, memberId, [newRole]);
+    const getMemberRoles = (member) => {
+        if (!member.roles || !Array.isArray(member.roles)) return [];
+        return member.roles.map(roleId => {
+            const role = roles.find(r => r.id === roleId);
+            return role ? { ...role, id: roleId } : null;
+        }).filter(Boolean);
+    };
+
+    const handleRoleChange = async (memberId, roleId, addRole) => {
+        try {
+            const member = members.find(m => m.id === memberId);
+            if (!member) return;
+
+            let newRoles = [...(member.roles || [])];
+
+            if (addRole) {
+                // ロールを追加
+                if (!newRoles.includes(roleId)) {
+                    newRoles.push(roleId);
+                }
+            } else {
+                // ロールを削除
+                newRoles = newRoles.filter(id => id !== roleId);
+
+                // @everyoneロールがなければ追加
+                const everyoneRole = roles.find(r => r.isDefault);
+                if (everyoneRole && !newRoles.includes(everyoneRole.id)) {
+                    newRoles.push(everyoneRole.id);
+                }
+            }
+
+            await updateMemberRoles(server.id, member.uid, newRoles);
+        } catch (error) {
+            console.error('メンバーロール変更エラー:', error);
+            alert('メンバーロールの変更に失敗しました: ' + error.message);
+        }
     };
 
     const handleRemoveMember = async (memberId) => {
         if (confirm('このメンバーをサーバーから削除しますか？')) {
-            await removeMemberFromServer(server.id, memberId);
+            try {
+                await removeMemberFromServer(server.id, memberId);
+            } catch (error) {
+                console.error('メンバー削除エラー:', error);
+                alert('メンバーの削除に失敗しました: ' + error.message);
+            }
         }
     };
-
-    const isOwner = server?.ownerId === currentUser?.uid;
 
     return (
         <div style={{
@@ -145,29 +198,91 @@ export default function MemberList({ server, currentUser, onClose }) {
                                             color: '#b9bbbe',
                                             fontSize: '14px'
                                         }}>
-                                            {member.role || 'メンバー'}
+                                            {member.uid === currentUser.uid ? 'あなた' : 'メンバー'}
                                         </div>
                                     </div>
                                 </div>
 
+                                {/* ロール管理 */}
                                 {isOwner && member.uid !== currentUser.uid && (
-                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                    <div style={{ minWidth: '200px' }}>
+                                        <div style={{
+                                            display: 'flex',
+                                            flexWrap: 'wrap',
+                                            gap: '4px',
+                                            marginBottom: '8px'
+                                        }}>
+                                            {getMemberRoles(member).map(role => (
+                                                <div key={role.id} style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '4px',
+                                                    backgroundColor: '#40444b',
+                                                    padding: '2px 6px',
+                                                    borderRadius: '12px'
+                                                }}>
+                                                    <div style={{
+                                                        width: '8px',
+                                                        height: '8px',
+                                                        borderRadius: '50%',
+                                                        backgroundColor: role.color
+                                                    }} />
+                                                    <span style={{
+                                                        color: '#dcddde',
+                                                        fontSize: '12px'
+                                                    }}>
+                                                        {role.name}
+                                                    </span>
+                                                    {!role.isDefault && (
+                                                        <button
+                                                            onClick={() => handleRoleChange(member.id, role.id, false)}
+                                                            style={{
+                                                                background: 'none',
+                                                                border: 'none',
+                                                                color: '#ed4245',
+                                                                cursor: 'pointer',
+                                                                fontSize: '10px',
+                                                                padding: '0',
+                                                                marginLeft: '2px'
+                                                            }}
+                                                        >
+                                                            ✕
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        {/* ロール追加ドロップダウン */}
                                         <select
-                                            value={member.role || 'member'}
-                                            onChange={(e) => handleRoleChange(member.uid, e.target.value)}
+                                            onChange={(e) => {
+                                                if (e.target.value) {
+                                                    handleRoleChange(member.id, e.target.value, true);
+                                                    e.target.value = '';
+                                                }
+                                            }}
                                             style={{
                                                 backgroundColor: '#40444b',
                                                 color: '#dcddde',
                                                 border: 'none',
                                                 borderRadius: '4px',
                                                 padding: '4px 8px',
-                                                fontSize: '12px'
+                                                fontSize: '12px',
+                                                width: '100%'
                                             }}
+                                            value=""
                                         >
-                                            <option value="member">メンバー</option>
-                                            <option value="moderator">モデレーター</option>
-                                            <option value="admin">管理者</option>
+                                            <option value="">ロールを追加...</option>
+                                            {roles
+                                                .filter(role => !role.isDefault && !getMemberRoles(member).some(r => r.id === role.id))
+                                                .map(role => (
+                                                    <option key={role.id} value={role.id}>
+                                                        {role.name}
+                                                    </option>
+                                                ))}
                                         </select>
+
+                                        {/* 削除ボタン */}
                                         <button
                                             onClick={() => handleRemoveMember(member.uid)}
                                             style={{
@@ -177,10 +292,12 @@ export default function MemberList({ server, currentUser, onClose }) {
                                                 borderRadius: '4px',
                                                 padding: '4px 8px',
                                                 cursor: 'pointer',
-                                                fontSize: '12px'
+                                                fontSize: '12px',
+                                                marginTop: '8px',
+                                                width: '100%'
                                             }}
                                         >
-                                            削除
+                                            サーバーから削除
                                         </button>
                                     </div>
                                 )}

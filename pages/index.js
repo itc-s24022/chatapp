@@ -45,6 +45,140 @@ import VoiceChannel from "../components/VoiceChannel";
 import TagManager from "../components/TagManager";
 import DMNotifications from "../components/DMNotifications";
 
+// APIを使用しないYouTubeプレビューコンポーネント
+function YoutubePreview({ url }) {
+    const [videoId, setVideoId] = useState(null);
+    const [isExpanded, setIsExpanded] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        // YouTube URLから動画IDを抽出
+        const extractVideoId = (url) => {
+            const regex = /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/;
+            const match = url.match(regex);
+            return match ? match[1] : null;
+        };
+
+        const id = extractVideoId(url);
+        setVideoId(id);
+        setIsLoading(false);
+    }, [url]);
+
+    if (isLoading) {
+        return (
+            <div style={{
+                backgroundColor: '#2f3136',
+                borderRadius: '8px',
+                padding: '16px',
+                margin: '8px 0',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#b9bbbe'
+            }}>
+                YouTube動画を読み込み中...
+            </div>
+        );
+    }
+
+    if (!videoId) {
+        return (
+            <a
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                    color: '#5865f2',
+                    textDecoration: 'underline',
+                    wordBreak: 'break-all',
+                    display: 'block',
+                    margin: '8px 0'
+                }}
+            >
+                {url}
+            </a>
+        );
+    }
+
+    return (
+        <div style={{ margin: '8px 0' }}>
+            {/* YouTubeリンク表示 */}
+            <div
+                style={{
+                    backgroundColor: '#2f3136',
+                    borderRadius: '8px',
+                    padding: '12px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                    transition: 'background-color 0.2s'
+                }}
+                onClick={() => setIsExpanded(!isExpanded)}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#40444b'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#2f3136'}
+            >
+                <div style={{
+                    width: '60px',
+                    height: '45px',
+                    backgroundColor: '#000',
+                    borderRadius: '4px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#ff0000',
+                    fontSize: '24px'
+                }}>
+                    ▶
+                </div>
+                <div>
+                    <div style={{
+                        color: '#ffffff',
+                        fontWeight: '600',
+                        fontSize: '14px'
+                    }}>
+                        YouTube動画
+                    </div>
+                    <div style={{
+                        color: '#72767d',
+                        fontSize: '12px'
+                    }}>
+                        {isExpanded ? 'クリックして折りたたむ' : 'クリックして再生'}
+                    </div>
+                </div>
+            </div>
+
+            {/* 埋め込みプレイヤー（展開時のみ表示） */}
+            {isExpanded && (
+                <div style={{
+                    marginTop: '8px',
+                    borderRadius: '8px',
+                    overflow: 'hidden',
+                    position: 'relative',
+                    paddingBottom: '56.25%', // 16:9のアスペクト比
+                    height: 0
+                }}>
+                    <iframe
+                        src={`https://www.youtube.com/embed/${videoId}?autoplay=1`}
+                        style={{
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            width: '100%',
+                            height: '100%',
+                            border: 'none',
+                            borderRadius: '8px'
+                        }}
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allowFullScreen
+                        title="YouTube video player"
+                    />
+                </div>
+            )}
+        </div>
+    );
+}
+
 export default function ChatPage() {
     const [user, setUser] = useState(null);
     const [servers, setServers] = useState([]);
@@ -215,6 +349,12 @@ export default function ChatPage() {
         const otherParticipantId = getOtherParticipant(dmChannel);
         // participantNamesから名前を取得し、なければ'匿名'を返す
         return dmChannel.participantNames?.[otherParticipantId] || '匿名';
+    };
+
+    // メッセージ内のURLを検出する関数
+    const extractUrls = (text) => {
+        const urlRegex = /(https?:\/\/[^\s]+)/g;
+        return text.match(urlRegex) || [];
     };
 
     // サーバー選択ハンドラ
@@ -628,7 +768,6 @@ export default function ChatPage() {
                             }}>
                                 ボイスチャンネルに接続されています
                             </p>
-
                             {/* 参加者表示エリア */}
                             {voiceParticipants.length > 0 && (
                                 <div style={{
@@ -661,7 +800,6 @@ export default function ChatPage() {
                                                 position: 'relative'
                                             }}>
                                                 {participant.name.charAt(0).toUpperCase()}
-
                                                 {/* 喋っているインジケーター */}
                                                 {speakingUsers.has(participant.id) && (
                                                     <div style={{
@@ -676,7 +814,6 @@ export default function ChatPage() {
                                                         animation: 'pulse 1.5s infinite'
                                                     }} />
                                                 )}
-
                                                 {/* ミュートインジケーター */}
                                                 {participant.muted && (
                                                     <div style={{
@@ -719,7 +856,6 @@ export default function ChatPage() {
                                     ))}
                                 </div>
                             )}
-
                             {/* 参加者がいない場合のメッセージ */}
                             {voiceParticipants.length === 0 && (
                                 <div style={{
@@ -872,7 +1008,36 @@ export default function ChatPage() {
                                                         {/* メッセージ内容 */}
                                                         {msg.content && (
                                                             <div style={{ marginBottom: msg.attachments?.length ? '8px' : '0' }}>
-                                                                {msg.content}
+                                                                {msg.content.split('\n').map((line, i) => (
+                                                                    <div key={i}>
+                                                                        {line}
+                                                                        {/* URLが含まれている場合の処理 */}
+                                                                        {i === msg.content.split('\n').length - 1 && extractUrls(line).map((url, urlIndex) => {
+                                                                            // YouTube URLの場合はプレビューを表示
+                                                                            if (url.includes('youtube.com') || url.includes('youtu.be')) {
+                                                                                return <YoutubePreview key={urlIndex} url={url} />;
+                                                                            }
+                                                                            // その他のURLの場合は通常のリンクとして表示
+                                                                            return (
+                                                                                <a
+                                                                                    key={urlIndex}
+                                                                                    href={url}
+                                                                                    target="_blank"
+                                                                                    rel="noopener noreferrer"
+                                                                                    style={{
+                                                                                        color: isMyMessage ? '#ffffff' : '#5865f2',
+                                                                                        textDecoration: 'underline',
+                                                                                        wordBreak: 'break-all',
+                                                                                        display: 'block',
+                                                                                        marginTop: '4px'
+                                                                                    }}
+                                                                                >
+                                                                                    {url}
+                                                                                </a>
+                                                                            );
+                                                                        })}
+                                                                    </div>
+                                                                ))}
                                                             </div>
                                                         )}
                                                         {/* 添付ファイル表示 */}
@@ -967,7 +1132,7 @@ export default function ChatPage() {
                                                         backgroundColor: '#2f3136',
                                                         padding: '4px',
                                                         borderRadius: '8px',
-                                                        border: '1px solid #40444b',
+                                                        border: "1px solid '#40444b'", // 修正行
                                                         boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
                                                         zIndex: 10
                                                     }}>
@@ -1097,7 +1262,7 @@ export default function ChatPage() {
                                         alignItems: 'center'
                                     }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            <image
+                                            <img
                                                 src={imageAttachment.url}
                                                 alt="添付画像"
                                                 style={{
@@ -1484,7 +1649,7 @@ function ImageDisplay({ imageId }) {
     }
 
     return (
-        <image
+        <img
             src={imageData.data}
             alt={imageData.name}
             style={{
