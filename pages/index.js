@@ -44,6 +44,8 @@ import ImageUploader from "../components/ImageUploader";
 import VoiceChannel from "../components/VoiceChannel";
 import TagManager from "../components/TagManager";
 import DMNotifications from "../components/DMNotifications";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "../lib/firebase";
 
 // APIを使用しないYouTubeプレビューコンポーネント
 function YoutubePreview({ url }) {
@@ -347,8 +349,39 @@ export default function ChatPage() {
     const getOtherParticipantName = (dmChannel) => {
         if (!dmChannel || dmChannel.type !== 'dm') return '';
         const otherParticipantId = getOtherParticipant(dmChannel);
-        // participantNamesから名前を取得し、なければ'匿名'を返す
-        return dmChannel.participantNames?.[otherParticipantId] || '匿名';
+
+        // participantNamesから名前を取得し、なければFirestoreから取得
+        if (dmChannel.participantNames && dmChannel.participantNames[otherParticipantId]) {
+            return dmChannel.participantNames[otherParticipantId];
+        }
+
+        // Firestoreからユーザー情報を取得
+        // ここでは非同期処理ができないので、とりあえずIDを返す
+        return otherParticipantId || 'ユーザー';
+    };
+
+    // ユーザー情報を取得する関数を追加
+    const fetchUserData = async (userId) => {
+        if (!userId) return null;
+
+        try {
+            const userRef = doc(db, 'users', userId);
+            const userDoc = await getDoc(userRef);
+
+            if (userDoc.exists()) {
+                const userData = userDoc.data();
+                return {
+                    id: userId,
+                    displayName: userData.displayName || userData.email || 'ユーザー',
+                    email: userData.email,
+                    avatar: userData.avatar
+                };
+            }
+        } catch (error) {
+            console.error('ユーザー情報取得エラー:', error);
+        }
+
+        return null;
     };
 
     // メッセージ内のURLを検出する関数
@@ -381,12 +414,39 @@ export default function ChatPage() {
     };
 
     // DMチャンネル選択ハンドラ
-    const handleDMChannelSelect = (dmChannel) => {
+    const handleDMChannelSelect = async (dmChannel) => {
         console.log('DMチャンネル選択:', dmChannel);
-        setCurrentChannel(dmChannel);
-        setCurrentServer({ id: 'dm', name: 'ダイレクトメッセージ' });
-        setIsDMMode(true);
+
+        // DMチャンネルの相手ユーザー情報を取得
+        const otherParticipantId = getOtherParticipant(dmChannel);
+        if (otherParticipantId) {
+            const otherUserData = await fetchUserData(otherParticipantId);
+
+            // DMチャンネル情報を更新（相手の情報を含める）
+            const updatedDmChannel = {
+                ...dmChannel,
+                otherUserData: otherUserData
+            };
+
+            setCurrentChannel(updatedDmChannel);
+            setCurrentServer({ id: 'dm', name: 'ダイレクトメッセージ' });
+            setIsDMMode(true);
+        } else {
+            setCurrentChannel(dmChannel);
+            setCurrentServer({ id: 'dm', name: 'ダイレクトメッセージ' });
+            setIsDMMode(true);
+        }
     };
+
+    // グローバル関数として登録するuseEffectを追加
+    useEffect(() => {
+        // DMチャンネル選択用のグローバル関数を登録
+        window.handleDMChannelSelect = handleDMChannelSelect;
+
+        return () => {
+            window.handleDMChannelSelect = null;
+        };
+    }, []);
 
     const handleSendMessage = async () => {
         if ((!input.trim() && !imageAttachment) || !user || !currentChannel) return;
@@ -575,6 +635,7 @@ export default function ChatPage() {
                 onUpdateServerIcon={handleServerIconUpdate}
                 currentUser={user}
             />
+
             {/* チャンネルサイドバー / フレンドリスト */}
             {isDMMode || currentServer?.id === 'dm' ? (
                 <FriendsList
@@ -609,6 +670,7 @@ export default function ChatPage() {
                     isMuted={isMuted}
                 />
             ) : null}
+
             {/* メインチャットエリア */}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative' }}>
                 {/* ヘッダー */}
@@ -629,7 +691,7 @@ export default function ChatPage() {
                         }}>
                             {currentChannel ?
                                 (currentChannel.type === 'dm' ?
-                                        `💬 ${getOtherParticipantName(currentChannel)}` :
+                                        `💬 ${currentChannel.otherUserData?.displayName || 'ユーザー'}` :
                                         currentChannel.type === 'voice' ?
                                             `🔊 ${currentChannel.name}` :
                                             `# ${currentChannel.name}`
@@ -733,6 +795,7 @@ export default function ChatPage() {
                         </div>
                     )}
                 </div>
+
                 {/* メッセージエリア */}
                 {currentChannel ? (
                     currentChannel.type === 'voice' ? (
@@ -1132,7 +1195,7 @@ export default function ChatPage() {
                                                         backgroundColor: '#2f3136',
                                                         padding: '4px',
                                                         borderRadius: '8px',
-                                                        border: "1px solid '#40444b'", // 修正行
+                                                        border: '1px solid #40444b',
                                                         boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
                                                         zIndex: 10
                                                     }}>
@@ -1230,7 +1293,7 @@ export default function ChatPage() {
                                         <span style={{ color: '#dcddde', fontSize: '14px' }}>
                                             {editingMessage ? '編集中...' :
                                                 currentChannel?.type === 'dm' ?
-                                                    `${getOtherParticipantName(currentChannel)}に返信中...` :
+                                                    `${currentChannel.otherUserData?.displayName || 'ユーザー'}に返信中...` :
                                                     `${replyingTo.userName}に返信中...`}
                                         </span>
                                         <button
@@ -1308,7 +1371,7 @@ export default function ChatPage() {
                                         }}
                                         placeholder={
                                             currentChannel?.type === 'dm' ?
-                                                `${getOtherParticipantName(currentChannel)}にメッセージを送信` :
+                                                `${currentChannel.otherUserData?.displayName || 'ユーザー'}にメッセージを送信` :
                                                 `#${currentChannel.name} にメッセージを送信`
                                         }
                                         style={{
@@ -1407,6 +1470,7 @@ export default function ChatPage() {
                         </p>
                     </div>
                 )}
+
                 {/* メンバーリストモーダル */}
                 {showMemberList && currentServer && currentServer.id !== 'dm' && (
                     <MemberList
@@ -1415,6 +1479,7 @@ export default function ChatPage() {
                         onClose={() => setShowMemberList(false)}
                     />
                 )}
+
                 {/* タグ管理モーダル */}
                 {showTagManager && currentServer && currentServer.id !== 'dm' && (
                     <div style={{
@@ -1471,6 +1536,7 @@ export default function ChatPage() {
                         </div>
                     </div>
                 )}
+
                 {/* 招待モーダル */}
                 {showInviteModal && currentServer && currentServer.id !== 'dm' && (
                     <div style={{
@@ -1558,6 +1624,7 @@ export default function ChatPage() {
                         </div>
                     </div>
                 )}
+
                 {/* ロール管理モーダル */}
                 {showRoleManager && currentServer && currentServer.id !== 'dm' && (
                     <RoleManager
@@ -1566,6 +1633,7 @@ export default function ChatPage() {
                         onClose={() => setShowRoleManager(false)}
                     />
                 )}
+
                 {/* 画像アップロードモーダル */}
                 {showImageUploader && (
                     <ImageUploader
@@ -1574,10 +1642,13 @@ export default function ChatPage() {
                     />
                 )}
             </div>
+
             {/* DM通知コンポーネントを追加 */}
             {user && <DMNotifications user={user} />}
+
             {/* サーバー招待通知 */}
             <ServerInvites user={user} />
+
             {/* ボイスチャンネル */}
             {isVoiceChannelActive && currentChannel?.type === 'voice' && (
                 <VoiceChannel

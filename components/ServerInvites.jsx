@@ -1,5 +1,6 @@
-
 import { useState, useEffect } from 'react';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 import { getServerInvites, acceptServerInvite, declineServerInvite } from '../lib/firestore';
 
 export default function ServerInvites({ user }) {
@@ -7,7 +8,6 @@ export default function ServerInvites({ user }) {
 
     useEffect(() => {
         if (!user) return;
-
         const unsubscribe = getServerInvites(user.uid, (snapshot) => {
             const inviteList = snapshot.docs.map(doc => ({
                 id: doc.id,
@@ -15,13 +15,18 @@ export default function ServerInvites({ user }) {
             }));
             setInvites(inviteList);
         });
-
         return () => unsubscribe();
     }, [user]);
 
     const handleAccept = async (invite) => {
         try {
-            await acceptServerInvite(invite.id, invite.serverId, user.uid, user.displayName || '匿名');
+            // Fetch user display name to ensure it's not undefined
+            const userRef = doc(db, 'users', user.uid);
+            const userDoc = await getDoc(userRef);
+            const displayName = userDoc.exists() ?
+                (userDoc.data().displayName || user.email) : user.email;
+
+            await acceptServerInvite(invite.id, invite.serverId, user.uid, displayName);
         } catch (error) {
             console.error('招待受諾エラー:', error);
             alert('招待の受諾に失敗しました');
@@ -51,14 +56,14 @@ export default function ServerInvites({ user }) {
             maxWidth: '300px',
             zIndex: 1000
         }}>
-            <h3 style={{ 
-                color: '#ffffff', 
-                fontSize: '16px', 
-                margin: '0 0 12px 0' 
+            <h3 style={{
+                color: '#ffffff',
+                fontSize: '16px',
+                margin: '0 0 12px 0'
             }}>
                 サーバー招待 ({invites.length})
             </h3>
-            
+
             {invites.map(invite => (
                 <div key={invite.id} style={{
                     backgroundColor: '#2f3136',
@@ -69,7 +74,7 @@ export default function ServerInvites({ user }) {
                     <div style={{ color: '#dcddde', fontSize: '14px', marginBottom: '8px' }}>
                         <strong>{invite.inviterName}</strong> があなたをサーバーに招待しました
                     </div>
-                    
+
                     <div style={{ display: 'flex', gap: '8px' }}>
                         <button
                             onClick={() => handleAccept(invite)}

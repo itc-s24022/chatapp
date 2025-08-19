@@ -1,6 +1,7 @@
-// components/MemberList.jsx
 import { useState, useEffect } from 'react';
-import { getServerMembers, updateMemberRoles, removeMemberFromServer, getServerRoles } from '../lib/firestore';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../lib/firebase';
+import { getServerMembers, updateMemberRoles, removeMemberFromServer, getServerRoles, createDMChannel } from '../lib/firestore';
 import UserProfile from './UserProfile';
 
 export default function MemberList({ server, currentUser, onClose }) {
@@ -8,7 +9,6 @@ export default function MemberList({ server, currentUser, onClose }) {
     const [roles, setRoles] = useState([]);
     const [selectedUser, setSelectedUser] = useState(null);
     const [loading, setLoading] = useState(true);
-
     const isOwner = server?.ownerId === currentUser?.uid;
 
     useEffect(() => {
@@ -53,7 +53,6 @@ export default function MemberList({ server, currentUser, onClose }) {
             if (!member) return;
 
             let newRoles = [...(member.roles || [])];
-
             if (addRole) {
                 // ロールを追加
                 if (!newRoles.includes(roleId)) {
@@ -62,7 +61,6 @@ export default function MemberList({ server, currentUser, onClose }) {
             } else {
                 // ロールを削除
                 newRoles = newRoles.filter(id => id !== roleId);
-
                 // @everyoneロールがなければ追加
                 const everyoneRole = roles.find(r => r.isDefault);
                 if (everyoneRole && !newRoles.includes(everyoneRole.id)) {
@@ -85,6 +83,48 @@ export default function MemberList({ server, currentUser, onClose }) {
                 console.error('メンバー削除エラー:', error);
                 alert('メンバーの削除に失敗しました: ' + error.message);
             }
+        }
+    };
+
+    // DMを作成する関数
+    const handleCreateDM = async (member) => {
+        try {
+            // 現在のユーザー名を取得
+            const currentUserRef = doc(db, 'users', currentUser.uid);
+            const currentUserDoc = await getDoc(currentUserRef);
+            const currentUserName = currentUserDoc.exists() ?
+                (currentUserDoc.data().displayName || currentUser.displayName || currentUser.email) :
+                'ユーザー';
+
+            // メンバーのユーザー名を取得
+            const memberRef = doc(db, 'users', member.uid);
+            const memberDoc = await getDoc(memberRef);
+            const memberName = memberDoc.exists() ?
+                (memberDoc.data().displayName || member.displayName || member.email) :
+                'ユーザー';
+
+            // DMチャンネルを作成
+            const dmChannel = await createDMChannel(
+                currentUser.uid,
+                member.uid,
+                currentUserName,
+                memberName
+            );
+
+            if (dmChannel) {
+                alert('DMチャンネルを作成しました');
+                setSelectedUser(null); // ユーザープロフィールを閉じる
+
+                // DMチャンネルに切り替える（グローバル関数を呼び出し）
+                if (window.handleDMChannelSelect) {
+                    window.handleDMChannelSelect(dmChannel);
+                }
+            } else {
+                throw new Error('DMチャンネルの作成に失敗しました');
+            }
+        } catch (error) {
+            console.error('DM作成エラー:', error);
+            alert('DM作成に失敗しました: ' + error.message);
         }
     };
 
@@ -175,7 +215,7 @@ export default function MemberList({ server, currentUser, onClose }) {
                                         fontWeight: '600',
                                         color: 'white'
                                     }}>
-                                        {(member.displayName || "匿").charAt(0).toUpperCase()}
+                                        {(member.displayName || member.email || "匿").charAt(0).toUpperCase()}
                                     </div>
                                     <div>
                                         <div style={{
@@ -183,7 +223,7 @@ export default function MemberList({ server, currentUser, onClose }) {
                                             fontSize: '16px',
                                             fontWeight: '500'
                                         }}>
-                                            {member.displayName || "匿名"}
+                                            {member.displayName || member.email || "匿名"}
                                             {member.uid === server.ownerId && (
                                                 <span style={{
                                                     color: '#faa61a',
@@ -311,7 +351,7 @@ export default function MemberList({ server, currentUser, onClose }) {
                         user={selectedUser}
                         onClose={() => setSelectedUser(null)}
                         onSendFriendRequest={() => {}}
-                        onCreateDM={() => {}}
+                        onCreateDM={() => handleCreateDM(selectedUser)}
                         isFriend={false}
                     />
                 )}
