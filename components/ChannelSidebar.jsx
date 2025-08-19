@@ -253,7 +253,7 @@ export default function ChannelSidebar({
                                     }}>
                                         {channelParticipants.map(participant => {
                                             // 安全に名前を取得
-                                            const name = participant.userName || '匿名';
+                                            const name = participant.userName || participant.displayName || '匿名';
                                             const initial = name && typeof name === 'string' ? name.charAt(0).toUpperCase() : '?';
 
                                             return (
@@ -444,7 +444,7 @@ export default function ChannelSidebar({
                             <input
                                 type="text"
                                 value={channelName}
-                                onChange={(e) => setChannelName(e.target)}
+                                onChange={(e) => setChannelName(e.target.value)} // 修正: e.target.valueを設定
                                 placeholder="新しいチャンネル"
                                 style={{
                                     width: '100%',

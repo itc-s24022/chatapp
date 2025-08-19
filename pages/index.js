@@ -44,6 +44,142 @@ import ImageUploader from "../components/ImageUploader";
 import VoiceChannel from "../components/VoiceChannel";
 import TagManager from "../components/TagManager";
 import DMNotifications from "../components/DMNotifications";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "../lib/firebase";
+
+// APIを使用しないYouTubeプレビューコンポーネント
+function YoutubePreview({ url }) {
+    const [videoId, setVideoId] = useState(null);
+    const [isExpanded, setIsExpanded] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        // YouTube URLから動画IDを抽出
+        const extractVideoId = (url) => {
+            const regex = /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/;
+            const match = url.match(regex);
+            return match ? match[1] : null;
+        };
+
+        const id = extractVideoId(url);
+        setVideoId(id);
+        setIsLoading(false);
+    }, [url]);
+
+    if (isLoading) {
+        return (
+            <div style={{
+                backgroundColor: '#2f3136',
+                borderRadius: '8px',
+                padding: '16px',
+                margin: '8px 0',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#b9bbbe'
+            }}>
+                YouTube動画を読み込み中...
+            </div>
+        );
+    }
+
+    if (!videoId) {
+        return (
+            <a
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                    color: '#5865f2',
+                    textDecoration: 'underline',
+                    wordBreak: 'break-all',
+                    display: 'block',
+                    margin: '8px 0'
+                }}
+            >
+                {url}
+            </a>
+        );
+    }
+
+    return (
+        <div style={{ margin: '8px 0' }}>
+            {/* YouTubeリンク表示 */}
+            <div
+                style={{
+                    backgroundColor: '#2f3136',
+                    borderRadius: '8px',
+                    padding: '12px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                    transition: 'background-color 0.2s'
+                }}
+                onClick={() => setIsExpanded(!isExpanded)}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#40444b'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#2f3136'}
+            >
+                <div style={{
+                    width: '60px',
+                    height: '45px',
+                    backgroundColor: '#000',
+                    borderRadius: '4px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#ff0000',
+                    fontSize: '24px'
+                }}>
+                    ▶
+                </div>
+                <div>
+                    <div style={{
+                        color: '#ffffff',
+                        fontWeight: '600',
+                        fontSize: '14px'
+                    }}>
+                        YouTube動画
+                    </div>
+                    <div style={{
+                        color: '#72767d',
+                        fontSize: '12px'
+                    }}>
+                        {isExpanded ? 'クリックして折りたたむ' : 'クリックして再生'}
+                    </div>
+                </div>
+            </div>
+
+            {/* 埋め込みプレイヤー（展開時のみ表示） */}
+            {isExpanded && (
+                <div style={{
+                    marginTop: '8px',
+                    borderRadius: '8px',
+                    overflow: 'hidden',
+                    position: 'relative',
+                    paddingBottom: '56.25%', // 16:9のアスペクト比
+                    height: 0
+                }}>
+                    <iframe
+                        src={`https://www.youtube.com/embed/${videoId}?autoplay=1`}
+                        style={{
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            width: '100%',
+                            height: '100%',
+                            border: 'none',
+                            borderRadius: '8px'
+                        }}
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allowFullScreen
+                        title="YouTube video player"
+                    />
+                </div>
+            )}
+        </div>
+    );
+}
 
 export default function ChatPage() {
     const [user, setUser] = useState(null);
@@ -213,8 +349,45 @@ export default function ChatPage() {
     const getOtherParticipantName = (dmChannel) => {
         if (!dmChannel || dmChannel.type !== 'dm') return '';
         const otherParticipantId = getOtherParticipant(dmChannel);
-        // participantNamesから名前を取得し、なければ'匿名'を返す
-        return dmChannel.participantNames?.[otherParticipantId] || '匿名';
+
+        // participantNamesから名前を取得し、なければFirestoreから取得
+        if (dmChannel.participantNames && dmChannel.participantNames[otherParticipantId]) {
+            return dmChannel.participantNames[otherParticipantId];
+        }
+
+        // Firestoreからユーザー情報を取得
+        // ここでは非同期処理ができないので、とりあえずIDを返す
+        return otherParticipantId || 'ユーザー';
+    };
+
+    // ユーザー情報を取得する関数を追加
+    const fetchUserData = async (userId) => {
+        if (!userId) return null;
+
+        try {
+            const userRef = doc(db, 'users', userId);
+            const userDoc = await getDoc(userRef);
+
+            if (userDoc.exists()) {
+                const userData = userDoc.data();
+                return {
+                    id: userId,
+                    displayName: userData.displayName || userData.email || 'ユーザー',
+                    email: userData.email,
+                    avatar: userData.avatar
+                };
+            }
+        } catch (error) {
+            console.error('ユーザー情報取得エラー:', error);
+        }
+
+        return null;
+    };
+
+    // メッセージ内のURLを検出する関数
+    const extractUrls = (text) => {
+        const urlRegex = /(https?:\/\/[^\s]+)/g;
+        return text.match(urlRegex) || [];
     };
 
     // サーバー選択ハンドラ
@@ -241,12 +414,39 @@ export default function ChatPage() {
     };
 
     // DMチャンネル選択ハンドラ
-    const handleDMChannelSelect = (dmChannel) => {
+    const handleDMChannelSelect = async (dmChannel) => {
         console.log('DMチャンネル選択:', dmChannel);
-        setCurrentChannel(dmChannel);
-        setCurrentServer({ id: 'dm', name: 'ダイレクトメッセージ' });
-        setIsDMMode(true);
+
+        // DMチャンネルの相手ユーザー情報を取得
+        const otherParticipantId = getOtherParticipant(dmChannel);
+        if (otherParticipantId) {
+            const otherUserData = await fetchUserData(otherParticipantId);
+
+            // DMチャンネル情報を更新（相手の情報を含める）
+            const updatedDmChannel = {
+                ...dmChannel,
+                otherUserData: otherUserData
+            };
+
+            setCurrentChannel(updatedDmChannel);
+            setCurrentServer({ id: 'dm', name: 'ダイレクトメッセージ' });
+            setIsDMMode(true);
+        } else {
+            setCurrentChannel(dmChannel);
+            setCurrentServer({ id: 'dm', name: 'ダイレクトメッセージ' });
+            setIsDMMode(true);
+        }
     };
+
+    // グローバル関数として登録するuseEffectを追加
+    useEffect(() => {
+        // DMチャンネル選択用のグローバル関数を登録
+        window.handleDMChannelSelect = handleDMChannelSelect;
+
+        return () => {
+            window.handleDMChannelSelect = null;
+        };
+    }, []);
 
     const handleSendMessage = async () => {
         if ((!input.trim() && !imageAttachment) || !user || !currentChannel) return;
@@ -435,6 +635,7 @@ export default function ChatPage() {
                 onUpdateServerIcon={handleServerIconUpdate}
                 currentUser={user}
             />
+
             {/* チャンネルサイドバー / フレンドリスト */}
             {isDMMode || currentServer?.id === 'dm' ? (
                 <FriendsList
@@ -469,6 +670,7 @@ export default function ChatPage() {
                     isMuted={isMuted}
                 />
             ) : null}
+
             {/* メインチャットエリア */}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative' }}>
                 {/* ヘッダー */}
@@ -489,7 +691,7 @@ export default function ChatPage() {
                         }}>
                             {currentChannel ?
                                 (currentChannel.type === 'dm' ?
-                                        `💬 ${getOtherParticipantName(currentChannel)}` :
+                                        `💬 ${currentChannel.otherUserData?.displayName || 'ユーザー'}` :
                                         currentChannel.type === 'voice' ?
                                             `🔊 ${currentChannel.name}` :
                                             `# ${currentChannel.name}`
@@ -593,6 +795,7 @@ export default function ChatPage() {
                         </div>
                     )}
                 </div>
+
                 {/* メッセージエリア */}
                 {currentChannel ? (
                     currentChannel.type === 'voice' ? (
@@ -628,7 +831,6 @@ export default function ChatPage() {
                             }}>
                                 ボイスチャンネルに接続されています
                             </p>
-
                             {/* 参加者表示エリア */}
                             {voiceParticipants.length > 0 && (
                                 <div style={{
@@ -661,7 +863,6 @@ export default function ChatPage() {
                                                 position: 'relative'
                                             }}>
                                                 {participant.name.charAt(0).toUpperCase()}
-
                                                 {/* 喋っているインジケーター */}
                                                 {speakingUsers.has(participant.id) && (
                                                     <div style={{
@@ -676,7 +877,6 @@ export default function ChatPage() {
                                                         animation: 'pulse 1.5s infinite'
                                                     }} />
                                                 )}
-
                                                 {/* ミュートインジケーター */}
                                                 {participant.muted && (
                                                     <div style={{
@@ -719,7 +919,6 @@ export default function ChatPage() {
                                     ))}
                                 </div>
                             )}
-
                             {/* 参加者がいない場合のメッセージ */}
                             {voiceParticipants.length === 0 && (
                                 <div style={{
@@ -872,7 +1071,36 @@ export default function ChatPage() {
                                                         {/* メッセージ内容 */}
                                                         {msg.content && (
                                                             <div style={{ marginBottom: msg.attachments?.length ? '8px' : '0' }}>
-                                                                {msg.content}
+                                                                {msg.content.split('\n').map((line, i) => (
+                                                                    <div key={i}>
+                                                                        {line}
+                                                                        {/* URLが含まれている場合の処理 */}
+                                                                        {i === msg.content.split('\n').length - 1 && extractUrls(line).map((url, urlIndex) => {
+                                                                            // YouTube URLの場合はプレビューを表示
+                                                                            if (url.includes('youtube.com') || url.includes('youtu.be')) {
+                                                                                return <YoutubePreview key={urlIndex} url={url} />;
+                                                                            }
+                                                                            // その他のURLの場合は通常のリンクとして表示
+                                                                            return (
+                                                                                <a
+                                                                                    key={urlIndex}
+                                                                                    href={url}
+                                                                                    target="_blank"
+                                                                                    rel="noopener noreferrer"
+                                                                                    style={{
+                                                                                        color: isMyMessage ? '#ffffff' : '#5865f2',
+                                                                                        textDecoration: 'underline',
+                                                                                        wordBreak: 'break-all',
+                                                                                        display: 'block',
+                                                                                        marginTop: '4px'
+                                                                                    }}
+                                                                                >
+                                                                                    {url}
+                                                                                </a>
+                                                                            );
+                                                                        })}
+                                                                    </div>
+                                                                ))}
                                                             </div>
                                                         )}
                                                         {/* 添付ファイル表示 */}
@@ -1065,7 +1293,7 @@ export default function ChatPage() {
                                         <span style={{ color: '#dcddde', fontSize: '14px' }}>
                                             {editingMessage ? '編集中...' :
                                                 currentChannel?.type === 'dm' ?
-                                                    `${getOtherParticipantName(currentChannel)}に返信中...` :
+                                                    `${currentChannel.otherUserData?.displayName || 'ユーザー'}に返信中...` :
                                                     `${replyingTo.userName}に返信中...`}
                                         </span>
                                         <button
@@ -1097,7 +1325,7 @@ export default function ChatPage() {
                                         alignItems: 'center'
                                     }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            <image
+                                            <img
                                                 src={imageAttachment.url}
                                                 alt="添付画像"
                                                 style={{
@@ -1143,7 +1371,7 @@ export default function ChatPage() {
                                         }}
                                         placeholder={
                                             currentChannel?.type === 'dm' ?
-                                                `${getOtherParticipantName(currentChannel)}にメッセージを送信` :
+                                                `${currentChannel.otherUserData?.displayName || 'ユーザー'}にメッセージを送信` :
                                                 `#${currentChannel.name} にメッセージを送信`
                                         }
                                         style={{
@@ -1242,6 +1470,7 @@ export default function ChatPage() {
                         </p>
                     </div>
                 )}
+
                 {/* メンバーリストモーダル */}
                 {showMemberList && currentServer && currentServer.id !== 'dm' && (
                     <MemberList
@@ -1250,6 +1479,7 @@ export default function ChatPage() {
                         onClose={() => setShowMemberList(false)}
                     />
                 )}
+
                 {/* タグ管理モーダル */}
                 {showTagManager && currentServer && currentServer.id !== 'dm' && (
                     <div style={{
@@ -1306,6 +1536,7 @@ export default function ChatPage() {
                         </div>
                     </div>
                 )}
+
                 {/* 招待モーダル */}
                 {showInviteModal && currentServer && currentServer.id !== 'dm' && (
                     <div style={{
@@ -1393,6 +1624,7 @@ export default function ChatPage() {
                         </div>
                     </div>
                 )}
+
                 {/* ロール管理モーダル */}
                 {showRoleManager && currentServer && currentServer.id !== 'dm' && (
                     <RoleManager
@@ -1401,6 +1633,7 @@ export default function ChatPage() {
                         onClose={() => setShowRoleManager(false)}
                     />
                 )}
+
                 {/* 画像アップロードモーダル */}
                 {showImageUploader && (
                     <ImageUploader
@@ -1409,10 +1642,13 @@ export default function ChatPage() {
                     />
                 )}
             </div>
+
             {/* DM通知コンポーネントを追加 */}
             {user && <DMNotifications user={user} />}
+
             {/* サーバー招待通知 */}
             <ServerInvites user={user} />
+
             {/* ボイスチャンネル */}
             {isVoiceChannelActive && currentChannel?.type === 'voice' && (
                 <VoiceChannel
@@ -1484,7 +1720,7 @@ function ImageDisplay({ imageId }) {
     }
 
     return (
-        <image
+        <img
             src={imageData.data}
             alt={imageData.name}
             style={{

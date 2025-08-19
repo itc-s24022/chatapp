@@ -1,18 +1,33 @@
-
 import { useState } from 'react';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 
 export default function UserProfile({ user, onClose, onSendFriendRequest, onCreateDM, isFriend }) {
     const [loading, setLoading] = useState(false);
 
     const handleFriendRequest = async () => {
         setLoading(true);
-        await onSendFriendRequest(user.uid);
+        await onSendFriendRequest(user);
         setLoading(false);
     };
 
     const handleCreateDM = async () => {
         setLoading(true);
-        await onCreateDM(user.uid);
+        try {
+            // ユーザー情報を取得
+            const userRef = doc(db, 'users', user.uid);
+            const userDoc = await getDoc(userRef);
+            const userData = userDoc.exists() ? userDoc.data() : {};
+
+            // ユーザー名を取得（displayNameがなければemailを使用）
+            const userName = userData.displayName || user.displayName || user.email || 'ユーザー';
+
+            // DMを作成
+            await onCreateDM(user.uid, userName);
+        } catch (error) {
+            console.error('DM作成エラー:', error);
+            alert('DMの作成に失敗しました: ' + error.message);
+        }
         setLoading(false);
         onClose();
     };
@@ -83,7 +98,7 @@ export default function UserProfile({ user, onClose, onSendFriendRequest, onCrea
                         fontWeight: '600',
                         color: 'white'
                     }}>
-                        {(user.displayName || "匿").charAt(0).toUpperCase()}
+                        {(user.displayName || user.email || "ユーザー").charAt(0).toUpperCase()}
                     </div>
                     <div>
                         <h3 style={{
@@ -92,7 +107,7 @@ export default function UserProfile({ user, onClose, onSendFriendRequest, onCrea
                             fontWeight: '600',
                             margin: '0 0 4px 0'
                         }}>
-                            {user.displayName || "匿名"}
+                            {user.displayName || user.email || "ユーザー"}
                         </h3>
                         <p style={{
                             color: '#b9bbbe',
